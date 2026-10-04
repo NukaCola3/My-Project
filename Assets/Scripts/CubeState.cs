@@ -63,9 +63,26 @@ public class CubeState
         HashSet<string> edgeIDs =
             new HashSet<string>();
 
+        HashSet<string> centerIDs =
+            new HashSet<string>();
+
+
+        // -----------------------------------------------------
+        // CORNERS
+        // -----------------------------------------------------
 
         foreach (Cubie cubie in corners)
         {
+            if (string.IsNullOrEmpty(cubie.pieceID))
+            {
+                Debug.LogError(
+                    "Corner ohne gültige Piece-ID gefunden: " +
+                    cubie.name
+                );
+
+                return false;
+            }
+
             if (!cornerIDs.Add(cubie.pieceID))
             {
                 Debug.LogError(
@@ -78,12 +95,134 @@ public class CubeState
         }
 
 
+        // -----------------------------------------------------
+        // EDGES
+        // -----------------------------------------------------
+
         foreach (Cubie cubie in edges)
         {
+            if (string.IsNullOrEmpty(cubie.pieceID))
+            {
+                Debug.LogError(
+                    "Edge ohne gültige Piece-ID gefunden: " +
+                    cubie.name
+                );
+
+                return false;
+            }
+
             if (!edgeIDs.Add(cubie.pieceID))
             {
                 Debug.LogError(
                     "Doppelte Edge-ID gefunden: " +
+                    cubie.pieceID
+                );
+
+                return false;
+            }
+        }
+
+
+        // -----------------------------------------------------
+        // CENTERS
+        // -----------------------------------------------------
+
+        foreach (Cubie cubie in centers)
+        {
+            if (string.IsNullOrEmpty(cubie.pieceID))
+            {
+                Debug.LogError(
+                    "Center ohne gültige Piece-ID gefunden: " +
+                    cubie.name
+                );
+
+                return false;
+            }
+
+            if (!centerIDs.Add(cubie.pieceID))
+            {
+                Debug.LogError(
+                    "Doppelte Center-ID gefunden: " +
+                    cubie.pieceID
+                );
+
+                return false;
+            }
+        }
+
+
+        return true;
+    }
+
+
+    // =========================================================
+    // EINDEUTIGE POSITIONEN PRÜFEN
+    // =========================================================
+
+    public bool HasUniquePositions()
+    {
+        HashSet<Vector3Int> cornerPositions =
+            new HashSet<Vector3Int>();
+
+        HashSet<Vector3Int> edgePositions =
+            new HashSet<Vector3Int>();
+
+        HashSet<Vector3Int> centerPositions =
+            new HashSet<Vector3Int>();
+
+
+        // -----------------------------------------------------
+        // CORNERS
+        // -----------------------------------------------------
+
+        foreach (Cubie cubie in corners)
+        {
+            if (!cornerPositions.Add(cubie.logicalPosition))
+            {
+                Debug.LogError(
+                    "Doppelte Corner-Position gefunden: " +
+                    cubie.logicalPosition +
+                    " | Piece=" +
+                    cubie.pieceID
+                );
+
+                return false;
+            }
+        }
+
+
+        // -----------------------------------------------------
+        // EDGES
+        // -----------------------------------------------------
+
+        foreach (Cubie cubie in edges)
+        {
+            if (!edgePositions.Add(cubie.logicalPosition))
+            {
+                Debug.LogError(
+                    "Doppelte Edge-Position gefunden: " +
+                    cubie.logicalPosition +
+                    " | Piece=" +
+                    cubie.pieceID
+                );
+
+                return false;
+            }
+        }
+
+
+        // -----------------------------------------------------
+        // CENTERS
+        // -----------------------------------------------------
+
+        foreach (Cubie cubie in centers)
+        {
+            if (!centerPositions.Add(cubie.logicalPosition))
+            {
+                Debug.LogError(
+                    "Doppelte Center-Position gefunden: " +
+                    cubie.logicalPosition +
+                    " | Piece=" +
                     cubie.pieceID
                 );
 
@@ -106,9 +245,18 @@ public class CubeState
         int edgeOrientationSum = 0;
 
 
+        // -----------------------------------------------------
+        // CORNERS
+        // -----------------------------------------------------
+
         foreach (Cubie cubie in corners)
         {
-            cubie.UpdateOrientation();
+            // WICHTIG:
+            // Die Orientation wird nicht hier neu berechnet.
+            //
+            // Sie ist Bestandteil des logischen CubeStates
+            // und wird bereits während eines Zuges in Cubie
+            // aktualisiert.
 
             if (
                 cubie.orientation < 0 ||
@@ -117,7 +265,9 @@ public class CubeState
             {
                 Debug.LogError(
                     "Ungültige Corner-Orientierung bei " +
-                    cubie.pieceID
+                    cubie.pieceID +
+                    ": " +
+                    cubie.orientation
                 );
 
                 return false;
@@ -128,9 +278,14 @@ public class CubeState
         }
 
 
+        // -----------------------------------------------------
+        // EDGES
+        // -----------------------------------------------------
+
         foreach (Cubie cubie in edges)
         {
-            cubie.UpdateOrientation();
+            // Auch die Edge-Orientation wird nur gelesen.
+            // CubeState verändert sie nicht.
 
             if (
                 cubie.orientation < 0 ||
@@ -139,7 +294,9 @@ public class CubeState
             {
                 Debug.LogError(
                     "Ungültige Edge-Orientierung bei " +
-                    cubie.pieceID
+                    cubie.pieceID +
+                    ": " +
+                    cubie.orientation
                 );
 
                 return false;
@@ -150,8 +307,13 @@ public class CubeState
         }
 
 
+        // -----------------------------------------------------
+        // CORNER-INVARIANTE
+        // -----------------------------------------------------
+        //
         // Bei einem echten Rubik's Cube muss die Summe
-        // der Corner-Orientierungen durch 3 teilbar sein.
+        // aller Corner-Orientierungen durch 3 teilbar sein.
+        // -----------------------------------------------------
 
         if (cornerOrientationSum % 3 != 0)
         {
@@ -165,7 +327,12 @@ public class CubeState
         }
 
 
-        // Die Summe der Edge-Orientierungen muss gerade sein.
+        // -----------------------------------------------------
+        // EDGE-INVARIANTE
+        // -----------------------------------------------------
+        //
+        // Die Summe aller Edge-Orientierungen muss gerade sein.
+        // -----------------------------------------------------
 
         if (edgeOrientationSum % 2 != 0)
         {
@@ -188,45 +355,72 @@ public class CubeState
     // =========================================================
 
     public bool Validate()
-{
-    Debug.Log(
-        "CubeState: " +
-        corners.Count + " Corners, " +
-        edges.Count + " Edges, " +
-        centers.Count + " Centers"
-    );
-
-    bool valid = true;
-
+    {
         Debug.Log(
-        "CubeState Anzahl: " +
-        corners.Count + " Corners | " +
-        edges.Count + " Edges | " +
-        centers.Count + " Centers"
+            "CubeState: " +
+            corners.Count + " Corners, " +
+            edges.Count + " Edges, " +
+            centers.Count + " Centers"
         );
 
-    if (!IsValid())
-    
-    {
-        Debug.LogError(
-            "CubeState: Falsche Anzahl an Cubies."
-        );
 
-        valid = false;
+        bool valid = true;
+
+
+        // -----------------------------------------------------
+        // ANZAHL
+        // -----------------------------------------------------
+
+        if (!IsValid())
+        {
+            Debug.LogError(
+                "CubeState: Falsche Anzahl an Cubies."
+            );
+
+            valid = false;
+        }
+
+
+        // -----------------------------------------------------
+        // PIECE IDs
+        // -----------------------------------------------------
+
+        if (!HasUniquePieceIDs())
+        {
+            valid = false;
+        }
+
+
+        // -----------------------------------------------------
+        // POSITIONEN
+        // -----------------------------------------------------
+
+        if (!HasUniquePositions())
+        {
+            valid = false;
+        }
+
+
+        // -----------------------------------------------------
+        // ORIENTIERUNGEN
+        // -----------------------------------------------------
+
+        if (!HasValidOrientations())
+        {
+            valid = false;
+        }
+
+
+        if (valid)
+        {
+            Debug.Log(
+                "CubeState ist gültig."
+            );
+        }
+
+
+        return valid;
     }
-
-    if (!HasUniquePieceIDs())
-    {
-        valid = false;
-    }
-
-    if (!HasValidOrientations())
-    {
-        valid = false;
-    }
-
-    return valid;
-}
 
 
     // =========================================================
@@ -240,6 +434,10 @@ public class CubeState
         );
 
 
+        // -----------------------------------------------------
+        // CORNERS
+        // -----------------------------------------------------
+
         Debug.Log(
             "--- CORNERS ---"
         );
@@ -251,6 +449,10 @@ public class CubeState
             );
         }
 
+
+        // -----------------------------------------------------
+        // EDGES
+        // -----------------------------------------------------
 
         Debug.Log(
             "--- EDGES ---"
@@ -264,6 +466,10 @@ public class CubeState
         }
 
 
+        // -----------------------------------------------------
+        // CENTERS
+        // -----------------------------------------------------
+
         Debug.Log(
             "--- CENTERS ---"
         );
@@ -276,17 +482,26 @@ public class CubeState
         }
 
 
+        // -----------------------------------------------------
+        // VALIDIERUNG
+        // -----------------------------------------------------
+
+        bool valid =
+            Validate();
+
         Debug.Log(
             "Valid: " +
-            Validate()
+            valid
         );
 
+
+        // -----------------------------------------------------
+        // CENTER DETAILS
+        // -----------------------------------------------------
 
         Debug.Log(
-            "================================"
+            "--- CENTER DETAILS ---"
         );
-
-                Debug.Log("--- CENTERS ---");
 
         foreach (Cubie cubie in centers)
         {
@@ -299,5 +514,10 @@ public class CubeState
                 cubie.pieceID
             );
         }
+
+
+        Debug.Log(
+            "================================"
+        );
     }
 }
