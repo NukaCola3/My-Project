@@ -324,16 +324,6 @@ public class Cubie : MonoBehaviour
     // ==================================================
     // LOGISCHE ROTATION AKTUALISIEREN
     // ==================================================
-    //
-    // Wird von RubiksCube.cs aufgerufen:
-    //
-    // UpdateLogicalRotation(
-    //     rotationAxis,
-    //     direction
-    // );
-    //
-    // rotationAxis ist dort ein Vector3.
-    // ==================================================
 
     public void UpdateLogicalRotation(
         Vector3 rotationAxis,
@@ -543,11 +533,15 @@ public class Cubie : MonoBehaviour
         switch (Type)
         {
             case CubieType.Corner:
-                UpdateCornerOrientation();
+                // Corner Orientation wird bereits
+                // während des Zuges inkrementell aktualisiert.
                 break;
 
             case CubieType.Edge:
-                UpdateEdgeOrientation();
+                // Edge Orientation wird jetzt ebenfalls
+                // während des Zuges inkrementell aktualisiert.
+                //
+                // Hier NICHT neu berechnen!
                 break;
 
             case CubieType.Center:
@@ -560,234 +554,82 @@ public class Cubie : MonoBehaviour
     // ==================================================
     // CORNER ORIENTIERUNG
     // ==================================================
-    //
-    // WICHTIG:
-    //
-    // Die Orientierung einer Ecke wird anhand des
-    // ursprünglichen U/D-Stickers bestimmt.
-    //
-    // Dabei reicht es NICHT aus, nur die aktuelle Achse
-    // des Stickers anzusehen.
-    //
-    // Wir müssen zusätzlich berücksichtigen, ob sich
-    // die Ecke aktuell in der U- oder D-Schicht befindet.
-    //
-    // Definition:
-    //
-    // U/D-Sticker auf U/D:
-    //     Orientierung = 0
-    //
-    // U/D-Sticker auf X-Achse:
-    //     U-Schicht -> 1
-    //     D-Schicht -> 2
-    //
-    // U/D-Sticker auf Z-Achse:
-    //     U-Schicht -> 2
-    //     D-Schicht -> 1
-    //
-    // Dadurch erhält jede gültige Würfelstellung eine
-    // Corner-Orientierungssumme, die durch 3 teilbar ist.
-    // ==================================================
 
-    private void UpdateCornerOrientation()
+    public void UpdateCornerOrientation(
+        RotationAxis axis,
+        int direction,
+        Vector3Int oldPosition)
     {
-        orientation = 0;
-
-
-        // ------------------------------------------
-        // U/D-STICKER SUCHEN
-        // ------------------------------------------
-
-        CubieSticker udSticker = null;
-
-        foreach (CubieSticker sticker in stickers)
-        {
-            if (
-                sticker.originalDirection ==
-                    FaceDirection.PositiveY ||
-                sticker.originalDirection ==
-                    FaceDirection.NegativeY
-            )
-            {
-                udSticker = sticker;
-                break;
-            }
-        }
-
-
-        // Keine U/D-Sticker gefunden:
-        // Das wäre für einen Corner ungültig.
-        if (udSticker == null)
-        {
-            orientation = 0;
+        if (Type != CubieType.Corner)
             return;
-        }
 
-
-        FaceDirection current =
-            udSticker.currentDirection;
-
-
-        // ------------------------------------------
-        // FALL 1:
-        // U/D-STICKER IST NOCH AUF U ODER D
-        // ------------------------------------------
-
-        if (
-            current ==
-                FaceDirection.PositiveY ||
-            current ==
-                FaceDirection.NegativeY
-        )
-        {
-            orientation = 0;
+        // U und D verändern die Corner Orientation nicht.
+        if (axis == RotationAxis.Y)
             return;
-        }
 
+        int delta = 0;
 
-        // ------------------------------------------
-        // DIE AKTUELLE SCHICHT BESTIMMEN
-        // ------------------------------------------
-        //
-        // Ein Corner befindet sich immer entweder
-        // in der U-Schicht (y > 0) oder D-Schicht (y < 0).
-        //
-        // Das ist entscheidend für die Unterscheidung
-        // zwischen Orientierung 1 und 2.
-        // ------------------------------------------
-
-        bool isUpperLayer =
-            logicalPosition.y > 0;
-
-
-        // ------------------------------------------
-        // FALL 2:
-        // U/D-STICKER IST AUF DER X-ACHSE
-        // ------------------------------------------
-
-        if (
-            current ==
-                FaceDirection.PositiveX ||
-            current ==
-                FaceDirection.NegativeX
-        )
+        // R / L
+        if (axis == RotationAxis.X)
         {
-            if (isUpperLayer)
+            if (direction > 0) // R
             {
-                orientation = 1;
+                delta = oldPosition.z > 0 ? 1 : 2;
             }
-            else
+            else // L
             {
-                orientation = 2;
+                delta = oldPosition.z > 0 ? 2 : 1;
             }
-
-            return;
         }
 
-
-        // ------------------------------------------
-        // FALL 3:
-        // U/D-STICKER IST AUF DER Z-ACHSE
-        // ------------------------------------------
-
-        if (
-            current ==
-                FaceDirection.PositiveZ ||
-            current ==
-                FaceDirection.NegativeZ
-        )
+        // F / B
+        else if (axis == RotationAxis.Z)
         {
-            if (isUpperLayer)
+            if (direction < 0) // F
             {
-                orientation = 2;
+                delta = oldPosition.x > 0 ? 2 : 1;
             }
-            else
+            else // B
             {
-                orientation = 1;
+                delta = oldPosition.x > 0 ? 1 : 2;
             }
-
-            return;
         }
 
-
-        // ------------------------------------------
-        // FALLBACK
-        // ------------------------------------------
-
-        orientation = 0;
+        orientation = (orientation + delta) % 3;
     }
 
 
     // ==================================================
     // EDGE ORIENTIERUNG
     // ==================================================
+    //
+    // Edge Orientation wird als eigenständiger logischer
+    // Zustand inkrementell gespeichert.
+    //
+    // Konvention:
+    //
+    // U / U' -> keine Änderung
+    // D / D' -> keine Änderung
+    // R / R' -> keine Änderung
+    // L / L' -> keine Änderung
+    //
+    // F / F' -> betroffene Edges flippen
+    // B / B' -> betroffene Edges flippen
+    //
+    // Da diese Methode nur für Cubies der aktuell
+    // gedrehten Ebene aufgerufen wird, reicht die
+    // Prüfung auf RotationAxis.Z.
+    // ==================================================
 
-    private void UpdateEdgeOrientation()
+    public void UpdateEdgeOrientation(
+        RotationAxis axis)
     {
-        orientation = 0;
+        if (Type != CubieType.Edge)
+            return;
 
-
-        // ------------------------------------------
-        // UR / UF / UL / UB-artige Kanten
-        // ------------------------------------------
-
-        foreach (CubieSticker sticker in stickers)
+        if (axis == RotationAxis.Z)
         {
-            if (
-                sticker.originalDirection ==
-                    FaceDirection.PositiveY ||
-                sticker.originalDirection ==
-                    FaceDirection.NegativeY
-            )
-            {
-                if (
-                    sticker.currentDirection ==
-                        FaceDirection.PositiveY ||
-                    sticker.currentDirection ==
-                        FaceDirection.NegativeY
-                )
-                {
-                    orientation = 0;
-                }
-                else
-                {
-                    orientation = 1;
-                }
-
-                return;
-            }
-        }
-
-
-        // ------------------------------------------
-        // Andere Kanten
-        // ------------------------------------------
-
-        foreach (CubieSticker sticker in stickers)
-        {
-            if (
-                sticker.originalDirection ==
-                    FaceDirection.PositiveZ ||
-                sticker.originalDirection ==
-                    FaceDirection.NegativeZ
-            )
-            {
-                if (
-                    sticker.currentDirection ==
-                        FaceDirection.PositiveZ ||
-                    sticker.currentDirection ==
-                        FaceDirection.NegativeZ
-                )
-                {
-                    orientation = 0;
-                }
-                else
-                {
-                    orientation = 1;
-                }
-
-                return;
-            }
+            orientation = 1 - orientation;
         }
     }
 

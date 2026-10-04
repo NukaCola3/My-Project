@@ -8,363 +8,315 @@ public class CubeStateTester : MonoBehaviour
     public RubiksCube rubiksCube;
 
     [Header("Test")]
-    public float delayBetweenMoves = 0.5f;
+    public float delayBetweenMoves = 0.15f;
+    public bool stopOnFirstFailure = true;
+    public bool printAllEdgesOnFailure = true;
 
+    [Tooltip("Jede Sequenz sollte am Ende wieder zum Ausgangszustand zurückführen. " +
+             "Geprüft wird trotzdem nach JEDEM einzelnen Zug.")]
+    public string[] testSequences =
+    {
+        "R R'",
+        "L L'",
+        "U U'",
+        "D D'",
+        "F F'",
+        "B B'",
 
-    // ==================================================
-    // START
-    // ==================================================
+        "R U U' R'",
+        "F U U' F'",
+        "R F F' R'",
+        "F R R' F'",
+
+        "R U R' U' U R U' R'",
+        "F R U U' R' F'",
+        "R U F F' U' R'",
+        "R U F L L' F' U' R'",
+        "R U F L D B B' D' L' F' U' R'"
+    };
+
+    private int totalMoves = 0;
+    private int totalChecks = 0;
+    private int failedChecks = 0;
 
     private void Start()
     {
         if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
+            rubiksCube = FindFirstObjectByType<RubiksCube>();
 
         if (rubiksCube == null)
         {
-            Debug.LogError(
-                "CubeStateTester: Kein RubiksCube gefunden!"
-            );
-
+            Debug.LogError("CubeStateTester: Kein RubiksCube gefunden!");
             return;
         }
 
-        StartCoroutine(
-            RunOrientationTest()
-        );
+        StartCoroutine(RunStructuredTests());
     }
-
 
     // ==================================================
     // HAUPTTEST
     // ==================================================
 
-    private IEnumerator RunOrientationTest()
+    private IEnumerator RunStructuredTests()
     {
         Debug.Log("");
-        Debug.Log("================================================");
-        Debug.Log("       CORNER ORIENTATION DIAGNOSE START");
-        Debug.Log("================================================");
+        Debug.Log("============================================================");
+        Debug.Log("       CUBE STATE - STRUKTURIERTER ORIENTATIONSTEST");
+        Debug.Log("============================================================");
 
+        if (!ValidateOrientation("START / SOLVED", "<keine Züge>"))
+            yield break;
 
-        // ==================================================
-        // TEST 1
-        // ==================================================
+        for (int testIndex = 0; testIndex < testSequences.Length; testIndex++)
+        {
+            string sequence = testSequences[testIndex];
 
-        Debug.Log("");
-        Debug.Log("############################");
-        Debug.Log("# TEST 1: SOLVED");
-        Debug.Log("############################");
+            if (string.IsNullOrWhiteSpace(sequence))
+                continue;
 
-        PrintCornerState(
-            "SOLVED"
-        );
+            Debug.Log("");
+            Debug.Log("############################################################");
+            Debug.Log($"# TEST {testIndex + 1}: {sequence}");
+            Debug.Log("############################################################");
 
-        yield return new WaitForSeconds(
-            delayBetweenMoves
-        );
-        
+            List<MoveDefinition> moves = ParseSequence(sequence);
+            List<string> executedMoves = new List<string>();
 
-        // ==================================================
-        // TEST 2: R
-        // ==================================================
-        Debug.Log("");
-        Debug.Log("############################");
-        Debug.Log("# TEST 2: R U");
-        Debug.Log("############################");
+            if (moves.Count == 0)
+            {
+                Debug.LogWarning($"TEST {testIndex + 1}: Keine gültigen Züge gefunden.");
+                continue;
+            }
 
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            1,
-            "R"
-        );
+            for (int moveIndex = 0; moveIndex < moves.Count; moveIndex++)
+            {
+                MoveDefinition move = moves[moveIndex];
 
-        PrintCornerState(
-            "NACH R"
-        );
+                yield return ExecuteAndWait(
+                    move.axis,
+                    move.layer,
+                    move.direction,
+                    move.name
+                );
 
-        yield return ExecuteAndWait(
-            RotationAxis.Y,
-            1,
-            1,
-            "U"
-        );
+                totalMoves++;
+                executedMoves.Add(move.name);
 
-        PrintCornerState(
-            "NACH U"
-        );
+                string executedSequence = string.Join(" ", executedMoves);
+                string label =
+                    $"TEST {testIndex + 1} | STEP {moveIndex + 1}/{moves.Count} | {move.name}";
 
-        yield return new WaitForSeconds(
-            delayBetweenMoves
-        );
+                bool valid = ValidateOrientation(label, executedSequence);
 
-/*
-        // ==================================================
-        // TEST 3: R'
-        // ==================================================
+                if (!valid && stopOnFirstFailure)
+                {
+                    Debug.LogError("");
+                    Debug.LogError("============================================================");
+                    Debug.LogError("TEST ABGEBROCHEN - ERSTER FEHLER GEFUNDEN");
+                    Debug.LogError($"Test: {testIndex + 1}");
+                    Debug.LogError($"Geplante Sequenz: {sequence}");
+                    Debug.LogError($"Sequenz bis Fehler: {executedSequence}");
+                    Debug.LogError($"Fehler trat nach Zug '{move.name}' auf.");
+                    Debug.LogError("============================================================");
+                    yield break;
+                }
 
-        Debug.Log("");
-        Debug.Log("############################");
-        Debug.Log("# TEST 3: R'");
-        Debug.Log("############################");
+                if (delayBetweenMoves > 0f)
+                    yield return new WaitForSeconds(delayBetweenMoves);
+            }
 
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            -1,
-            "R'"
-        );
-
-        PrintCornerState(
-            "NACH R'"
-        );
-
-        yield return new WaitForSeconds(
-            delayBetweenMoves
-        );
-
-        // ==================================================
-        // TEST 4: F
-        // ==================================================
+            Debug.Log($"TEST {testIndex + 1} beendet: {sequence}");
+        }
 
         Debug.Log("");
-        Debug.Log("############################");
-        Debug.Log("# TEST 4: F");
-        Debug.Log("############################");
-
-        yield return ExecuteAndWait(
-            RotationAxis.Z,
-            1,
-            -1,
-            "F"
-        );
-
-        PrintCornerState(
-            "NACH F"
-        );
-
-        yield return new WaitForSeconds(
-            delayBetweenMoves
-        );
-
-
-        // ==================================================
-        // TEST 5: F'
-        // ==================================================
-
-        Debug.Log("");
-        Debug.Log("############################");
-        Debug.Log("# TEST 5: F'");
-        Debug.Log("############################");
-
-        yield return ExecuteAndWait(
-            RotationAxis.Z,
-            1,
-            1,
-            "F'"
-        );
-
-        PrintCornerState(
-            "NACH F'"
-        );
-
-        yield return new WaitForSeconds(
-            delayBetweenMoves
-        );
-
-
-        
-        // ==================================================
-        // TEST 6
-        // ==================================================
-
-        Debug.Log("");
-        Debug.Log("############################");
-        Debug.Log("# TEST 6: R U R' U'");
-        Debug.Log("############################");
-
-        Debug.Log(
-            "Führe Sequenz aus: R U R' U'"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            1,
-            "R"
-        );
-
-        PrintCornerState(
-            "NACH R"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.Y,
-            1,
-            1,
-            "U"
-        );
-
-        PrintCornerState(
-            "NACH R U"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            -1,
-            "R'"
-        );
-
-        PrintCornerState(
-            "NACH R U R'"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.Y,
-            1,
-            -1,
-            "U'"
-        );
-
-        PrintCornerState(
-            "NACH R U R' U'"
-        );
-
-
-        yield return new WaitForSeconds(
-            delayBetweenMoves
-        );
-
-        // ==================================================
-        // TEST 7
-        // ==================================================
-
-        Debug.Log("");
-        Debug.Log("############################");
-        Debug.Log("# TEST 7: (R U R' U') x 2");
-        Debug.Log("############################");
-
-        Debug.Log(
-            "Führe Sequenz aus:"
-        );
-
-        Debug.Log(
-            "R U R' U' R U R' U'"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            1,
-            "R"
-        );
-
-        PrintCornerState(
-            "NACH R"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.Y,
-            1,
-            1,
-            "U"
-        );
-
-        PrintCornerState(
-            "NACH R U"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            -1,
-            "R'"
-        );
-
-        PrintCornerState(
-            "NACH R U R'"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.Y,
-            1,
-            -1,
-            "U'"
-        );
-
-        PrintCornerState(
-            "NACH R U R' U'"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            1,
-            "R"
-        );
-
-        PrintCornerState(
-            "NACH R U R' U' R"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.Y,
-            1,
-            1,
-            "U"
-        );
-
-        PrintCornerState(
-            "NACH R U R' U' R U"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.X,
-            1,
-            -1,
-            "R'"
-        );
-
-        PrintCornerState(
-            "NACH R U R' U' R U R'"
-        );
-
-
-        yield return ExecuteAndWait(
-            RotationAxis.Y,
-            1,
-            -1,
-            "U'"
-        );
-
-        PrintCornerState(
-            "NACH (R U R' U') x 2"
-        );
-
-
-*/        
-        Debug.Log("");
-        Debug.Log("================================================");
-        Debug.Log("        CORNER ORIENTATION DIAGNOSE ENDE");
-        Debug.Log("================================================");
+        Debug.Log("============================================================");
+        Debug.Log("                 TESTLAUF BEENDET");
+        Debug.Log($"Ausgeführte Züge: {totalMoves}");
+        Debug.Log($"Prüfungen: {totalChecks}");
+        Debug.Log($"Fehlerhafte Prüfungen: {failedChecks}");
+        Debug.Log("============================================================");
     }
 
+    // ==================================================
+    // ORIENTATION PRÜFEN
+    // ==================================================
+
+    private bool ValidateOrientation(string label, string executedSequence)
+    {
+        totalChecks++;
+
+        int cornerSum = 0;
+        int edgeSum = 0;
+        int cornerCount = 0;
+        int edgeCount = 0;
+        bool valueRangeValid = true;
+
+        foreach (Cubie cubie in rubiksCube.cubies)
+        {
+            if (cubie == null)
+                continue;
+
+            if (cubie.Type == CubieType.Corner)
+            {
+                cornerCount++;
+                cornerSum += cubie.orientation;
+
+                if (cubie.orientation < 0 || cubie.orientation > 2)
+                {
+                    valueRangeValid = false;
+                    Debug.LogError(
+                        $"Ungültige Corner-Orientation: {cubie.pieceID} = {cubie.orientation}"
+                    );
+                }
+            }
+            else if (cubie.Type == CubieType.Edge)
+            {
+                edgeCount++;
+                edgeSum += cubie.orientation;
+
+                if (cubie.orientation < 0 || cubie.orientation > 1)
+                {
+                    valueRangeValid = false;
+                    Debug.LogError(
+                        $"Ungültige Edge-Orientation: {cubie.pieceID} = {cubie.orientation}"
+                    );
+                }
+            }
+        }
+
+        bool cornerCountValid = cornerCount == 8;
+        bool edgeCountValid = edgeCount == 12;
+        bool cornerValid = cornerSum % 3 == 0;
+        bool edgeValid = edgeSum % 2 == 0;
+
+        bool valid =
+            cornerCountValid &&
+            edgeCountValid &&
+            cornerValid &&
+            edgeValid &&
+            valueRangeValid;
+
+        string status = valid ? "OK" : "FEHLER";
+
+        Debug.Log(
+            $"[{status}] {label} | " +
+            $"Corners: {cornerSum} (mod 3 = {cornerSum % 3}) | " +
+            $"Edges: {edgeSum} (mod 2 = {edgeSum % 2}) | " +
+            $"Counts C/E: {cornerCount}/{edgeCount}"
+        );
+
+        if (!valid)
+        {
+            failedChecks++;
+
+            Debug.LogError("---------------- ORIENTATION FEHLER ----------------");
+            Debug.LogError($"Sequenz bis hier: {executedSequence}");
+
+            if (!cornerCountValid)
+                Debug.LogError($"Corner-Anzahl falsch: {cornerCount} statt 8");
+
+            if (!edgeCountValid)
+                Debug.LogError($"Edge-Anzahl falsch: {edgeCount} statt 12");
+
+            if (!cornerValid)
+                Debug.LogError(
+                    $"CORNER-SUMME UNGÜLTIG: {cornerSum} % 3 = {cornerSum % 3}"
+                );
+
+            if (!edgeValid)
+                Debug.LogError(
+                    $"EDGE-SUMME UNGÜLTIG: {edgeSum} % 2 = {edgeSum % 2}"
+                );
+
+            if (printAllEdgesOnFailure)
+                PrintEdgeState("FEHLER NACH: " + executedSequence);
+
+            PrintCornerSummary();
+            Debug.LogError("------------------------------------------------------");
+        }
+
+        return valid;
+    }
+
+    // ==================================================
+    // EDGE STATE
+    // ==================================================
+
+    private void PrintEdgeState(string title)
+    {
+        List<Cubie> edges = new List<Cubie>();
+
+        foreach (Cubie cubie in rubiksCube.cubies)
+        {
+            if (cubie != null && cubie.Type == CubieType.Edge)
+                edges.Add(cubie);
+        }
+
+        edges.Sort(
+            (a, b) => string.Compare(
+                a.pieceID,
+                b.pieceID,
+                System.StringComparison.Ordinal
+            )
+        );
+
+        Debug.Log("");
+        Debug.Log("================ EDGE STATE ================");
+        Debug.Log(title);
+
+        int sum = 0;
+
+        foreach (Cubie edge in edges)
+        {
+            sum += edge.orientation;
+
+            string stickerInfo = "";
+            foreach (CubieSticker sticker in edge.stickers)
+            {
+                if (stickerInfo.Length > 0)
+                    stickerInfo += " ";
+
+                stickerInfo +=
+                    sticker.originalDirection + "->" + sticker.currentDirection;
+            }
+
+            Debug.Log(
+                $"{edge.pieceID} | Edge | Pos={edge.logicalPosition} | " +
+                $"Ori={edge.orientation} | Stickers={stickerInfo}"
+            );
+        }
+
+        Debug.Log($"Edge-Summe: {sum} | MOD 2: {sum % 2}");
+        Debug.Log("============================================");
+    }
+
+    private void PrintCornerSummary()
+    {
+        List<Cubie> corners = new List<Cubie>();
+
+        foreach (Cubie cubie in rubiksCube.cubies)
+        {
+            if (cubie != null && cubie.Type == CubieType.Corner)
+                corners.Add(cubie);
+        }
+
+        corners.Sort(
+            (a, b) => string.Compare(
+                a.pieceID,
+                b.pieceID,
+                System.StringComparison.Ordinal
+            )
+        );
+
+        Debug.Log("CORNER SUMMARY:");
+
+        foreach (Cubie corner in corners)
+        {
+            Debug.Log(
+                $"{corner.pieceID} | Pos={corner.logicalPosition} | Ori={corner.orientation}"
+            );
+        }
+    }
 
     // ==================================================
     // ZUG AUSFÜHREN UND AUF ABSCHLUSS WARTEN
@@ -374,443 +326,177 @@ public class CubeStateTester : MonoBehaviour
         RotationAxis axis,
         int layer,
         int direction,
-        string moveName
-    )
+        string moveName)
     {
-        Debug.Log(
-            ">>> Starte Zug: " + moveName
-        );
+        Debug.Log(">>> " + moveName);
 
-        CubeMove move =
-            new CubeMove(
-                axis,
-                layer,
-                direction
-            );
+        CubeMove move = new CubeMove(axis, layer, direction);
+        rubiksCube.ExecuteInputMove(move);
 
-        rubiksCube.ExecuteInputMove(
-            move
-        );
+        // Einen Frame geben, damit die Rotation sicher starten kann.
+        yield return null;
 
-
-        // --------------------------------------------------
-        // WARTEN, BIS DIE ROTATION BEGINNT
-        // --------------------------------------------------
-
-        while (
-            !rubiksCube.IsCurrentlyRotating()
-        )
-        {
+        while (rubiksCube.IsCurrentlyRotating())
             yield return null;
-        }
 
-
-        Debug.Log(
-            "    Rotation läuft: " + moveName
-        );
-
-
-        // --------------------------------------------------
-        // WARTEN, BIS DIE ROTATION FERTIG IST
-        // --------------------------------------------------
-
-        while (
-            rubiksCube.IsCurrentlyRotating()
-        )
-        {
-            yield return null;
-        }
-
-
-        Debug.Log(
-            "<<< Zug fertig: " + moveName
-        );
-
-
-        // Einen zusätzlichen Frame warten,
-        // damit Unity alle Zustandsänderungen
-        // verarbeitet hat.
-
+        // Einen weiteren Frame für alle logischen Updates.
         yield return null;
     }
 
-
     // ==================================================
-    // CORNER STATE AUSGEBEN
+    // SEQUENZ PARSEN
     // ==================================================
 
-    private void PrintCornerState(
-        string testName
-    )
+    private List<MoveDefinition> ParseSequence(string sequence)
     {
-        if (rubiksCube == null)
+        List<MoveDefinition> result = new List<MoveDefinition>();
+
+        string[] tokens = sequence.Split(
+            new char[] { ' ', '\t', '\r', '\n' },
+            System.StringSplitOptions.RemoveEmptyEntries
+        );
+
+        foreach (string rawToken in tokens)
         {
-            Debug.LogError(
-                "CubeStateTester: RubiksCube fehlt!"
-            );
+            string token = rawToken.Trim().ToUpperInvariant();
+            bool prime = token.EndsWith("'");
+            bool twice = token.EndsWith("2") || token.EndsWith("2'");
 
-            return;
-        }
+            string baseMove = token.Replace("'", "").Replace("2", "");
 
-
-        List<Cubie> corners =
-            new List<Cubie>();
-
-
-        foreach (Cubie cubie in rubiksCube.cubies)
-        {
-            if (cubie == null)
+            MoveDefinition move;
+            if (!TryCreateMove(baseMove, prime, out move))
+            {
+                Debug.LogError($"Unbekannter Zug im Tester: '{rawToken}'");
                 continue;
-
-            if (
-                cubie.Type ==
-                CubieType.Corner
-            )
-            {
-                corners.Add(cubie);
             }
+
+            result.Add(move);
+
+            if (twice)
+                result.Add(move);
         }
 
-
-        corners.Sort(
-            (a, b) =>
-                string.Compare(
-                    a.pieceID,
-                    b.pieceID,
-                    System.StringComparison.Ordinal
-                )
-        );
-
-
-        Debug.Log("");
-        Debug.Log("----------------------------------------------");
-        Debug.Log(
-            "CORNER STATE: " +
-            testName
-        );
-        Debug.Log("----------------------------------------------");
-
-
-        Debug.Log(
-            "PieceID        Position        Orientation"
-        );
-
-        Debug.Log(
-            "----------------------------------------------"
-        );
-
-
-        int orientationSum = 0;
-
-
-        foreach (Cubie corner in corners)
-        {
-            orientationSum +=
-                corner.orientation;
-
-
-            Debug.Log(
-                string.Format(
-                    "{0,-14} {1,-15} {2}",
-                    corner.pieceID,
-                    corner.logicalPosition,
-                    corner.orientation
-                )
-            );
-        }
-
-
-        Debug.Log("");
-        Debug.Log(
-            "Orientierungs-Summe: " +
-            orientationSum
-        );
-
-
-        Debug.Log(
-            "Orientierungs-Summe MOD 3: " +
-            (
-                orientationSum % 3
-            )
-        );
-
-
-        if (
-            orientationSum % 3 == 0
-        )
-        {
-            Debug.Log(
-                "OK: Orientierungs-Summe ist durch 3 teilbar."
-            );
-        }
-        else
-        {
-            Debug.LogWarning(
-                "FEHLER: Orientierungs-Summe ist NICHT durch 3 teilbar!"
-            );
-        }
-
-
-        Debug.Log("");
-        Debug.Log(
-            "DETAILLIERTE STICKER-INFORMATION:"
-        );
-
-
-        foreach (Cubie corner in corners)
-        {
-            PrintCorner(
-                corner
-            );
-        }
-
-
-        Debug.Log(
-            "----------------------------------------------"
-        );
+        return result;
     }
 
-
-    // ==================================================
-    // EINZELNEN CORNER AUSGEBEN
-    // ==================================================
-
-    private void PrintCorner(
-        Cubie corner
-    )
+    private bool TryCreateMove(
+        string moveName,
+        bool prime,
+        out MoveDefinition move)
     {
-        Debug.Log("");
-        Debug.Log(
-            "===== CORNER " +
-            corner.pieceID +
-            " ====="
-        );
+        move = new MoveDefinition();
 
+        RotationAxis axis;
+        int layer;
+        int direction;
 
-        Debug.Log(
-            "Original Position: " +
-            corner.originalPosition
-        );
-
-
-        Debug.Log(
-            "Aktuelle Position: " +
-            corner.logicalPosition
-        );
-
-
-        Debug.Log(
-            "Orientation: " +
-            corner.orientation
-        );
-
-
-        CubieSticker udSticker =
-            null;
-
-
-        foreach (
-            CubieSticker sticker
-            in corner.stickers
-        )
+        switch (moveName)
         {
-            if (
-                sticker.originalDirection ==
-                    FaceDirection.PositiveY
-                ||
-                sticker.originalDirection ==
-                    FaceDirection.NegativeY
-            )
-            {
-                udSticker = sticker;
+            case "U":
+                axis = RotationAxis.Y;
+                layer = 1;
+                direction = 1;
                 break;
-            }
+
+            case "D":
+                axis = RotationAxis.Y;
+                layer = -1;
+                direction = -1;
+                break;
+
+            case "R":
+                axis = RotationAxis.X;
+                layer = 1;
+                direction = 1;
+                break;
+
+            case "L":
+                axis = RotationAxis.X;
+                layer = -1;
+                direction = -1;
+                break;
+
+            case "F":
+                axis = RotationAxis.Z;
+                layer = 1;
+                direction = -1;
+                break;
+
+            case "B":
+                axis = RotationAxis.Z;
+                layer = -1;
+                direction = 1;
+                break;
+
+            default:
+                return false;
         }
 
+        if (prime)
+            direction *= -1;
 
-        if (udSticker != null)
-        {
-            Debug.Log(
-                "Original U/D Sticker: " +
-                udSticker.originalDirection
-            );
-
-
-            Debug.Log(
-                "Aktuelle Sticker-Richtung: " +
-                udSticker.currentDirection
-            );
-        }
-        else
-        {
-            Debug.LogWarning(
-                "Keine U/D-Sticker gefunden!"
-            );
-        }
-
-
-        Debug.Log(
-            "Sticker:"
+        move = new MoveDefinition(
+            axis,
+            layer,
+            direction,
+            moveName + (prime ? "'" : "")
         );
 
-
-        foreach (
-            CubieSticker sticker
-            in corner.stickers
-        )
-        {
-            Debug.Log(
-                "   " +
-                sticker.originalDirection +
-                " -> " +
-                sticker.currentDirection
-            );
-        }
+        return true;
     }
 
-
     // ==================================================
-    // CONTEXT MENU: R
+    // MANUELLE DIAGNOSE
     // ==================================================
 
-    [ContextMenu("Test R")]
-    public void TestR()
+    [ContextMenu("Aktuellen Orientation-State prüfen")]
+    public void ValidateCurrentState()
     {
         if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
-
-        if (
-            !rubiksCube.IsCurrentlyRotating()
-        )
-        {
-            rubiksCube.ExecuteInputMove(
-                new CubeMove(
-                    RotationAxis.X,
-                    1,
-                    1
-                )
-            );
-        }
-    }
-
-
-    // ==================================================
-    // CONTEXT MENU: R'
-    // ==================================================
-
-    [ContextMenu("Test R Prime")]
-    public void TestRPrime()
-    {
-        if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
-
-        if (
-            !rubiksCube.IsCurrentlyRotating()
-        )
-        {
-            rubiksCube.ExecuteInputMove(
-                new CubeMove(
-                    RotationAxis.X,
-                    1,
-                    -1
-                )
-            );
-        }
-    }
-
-
-    // ==================================================
-    // CONTEXT MENU: F
-    // ==================================================
-
-    [ContextMenu("Test F")]
-    public void TestF()
-    {
-        if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
-
-        if (
-            !rubiksCube.IsCurrentlyRotating()
-        )
-        {
-            rubiksCube.ExecuteInputMove(
-                new CubeMove(
-                    RotationAxis.Z,
-                    1,
-                    -1
-                )
-            );
-        }
-    }
-
-
-    // ==================================================
-    // CONTEXT MENU: F'
-    // ==================================================
-
-    [ContextMenu("Test F Prime")]
-    public void TestFPrime()
-    {
-        if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
-
-        if (
-            !rubiksCube.IsCurrentlyRotating()
-        )
-        {
-            rubiksCube.ExecuteInputMove(
-                new CubeMove(
-                    RotationAxis.Z,
-                    1,
-                    1
-                )
-            );
-        }
-    }
-
-
-    // ==================================================
-    // MANUELLER STATE-TEST
-    // ==================================================
-
-    [ContextMenu("Corner State ausgeben")]
-    public void PrintCurrentCorners()
-    {
-        if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
+            rubiksCube = FindFirstObjectByType<RubiksCube>();
 
         if (rubiksCube == null)
         {
-            Debug.LogError(
-                "CubeStateTester: RubiksCube fehlt."
-            );
-
+            Debug.LogError("CubeStateTester: RubiksCube fehlt.");
             return;
         }
 
+        ValidateOrientation("MANUELL", "<manueller Zustand>");
+    }
 
-        PrintCornerState(
-            "MANUELLER TEST"
-        );
+    [ContextMenu("Aktuelle Edges ausgeben")]
+    public void PrintCurrentEdges()
+    {
+        if (rubiksCube == null)
+            rubiksCube = FindFirstObjectByType<RubiksCube>();
+
+        if (rubiksCube == null)
+        {
+            Debug.LogError("CubeStateTester: RubiksCube fehlt.");
+            return;
+        }
+
+        PrintEdgeState("MANUELLER STATE");
+    }
+
+    private struct MoveDefinition
+    {
+        public RotationAxis axis;
+        public int layer;
+        public int direction;
+        public string name;
+
+        public MoveDefinition(
+            RotationAxis axis,
+            int layer,
+            int direction,
+            string name)
+        {
+            this.axis = axis;
+            this.layer = layer;
+            this.direction = direction;
+            this.name = name;
+        }
     }
 }

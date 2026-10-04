@@ -30,9 +30,10 @@ public class RubiksCube : MonoBehaviour
         new List<Cubie>();
 
     public CubeState cubeState = new CubeState();
-    
+
+
     // ==================================================
-    // Tester erweitert
+    // TESTER
     // ==================================================
 
     public bool IsCurrentlyRotating()
@@ -40,13 +41,13 @@ public class RubiksCube : MonoBehaviour
         return isRotating;
     }
 
+
     // ==================================================
     // EINSTELLUNGEN
     // ==================================================
 
     [Header("Rotation")]
     public float rotationSpeed = 180f;
-
 
     [Header("Scramble")]
     public int scrambleLength = 20;
@@ -56,12 +57,9 @@ public class RubiksCube : MonoBehaviour
     // ZUGVERLAUF
     // ==================================================
 
-    // Bereits ausgeführte Züge
     private List<CubeMove> moveHistory =
         new List<CubeMove>();
 
-
-    // Rückgängig gemachte Züge
     private List<CubeMove> redoHistory =
         new List<CubeMove>();
 
@@ -81,13 +79,13 @@ public class RubiksCube : MonoBehaviour
 
     private void Start()
     {
-    FindCubies();
+        FindCubies();
 
-    ValidateCube();
+        ValidateCube();
 
-    cubeState.Build(cubies);
+        cubeState.Build(cubies);
 
-    cubeState.Print();
+        cubeState.Print();
     }
 
 
@@ -97,8 +95,6 @@ public class RubiksCube : MonoBehaviour
 
     private void Update()
     {
-        // Während einer Drehung keine neue
-        // Bewegung zulassen.
         if (isRotating)
         {
             return;
@@ -264,45 +260,27 @@ public class RubiksCube : MonoBehaviour
             return;
         }
 
-
-        // --------------------------------------------------
-        // ZUG SPEICHERN
-        // --------------------------------------------------
-
         moveHistory.Add(move);
 
-
-        // --------------------------------------------------
-        // REDO-HISTORY LÖSCHEN
-        // --------------------------------------------------
-
-        // Sobald ein neuer Zug gemacht wird,
-        // nachdem man einen Undo ausgeführt hat,
-        // ist die bisherige Redo-History ungültig!!!
-
         redoHistory.Clear();
-
-
-        // --------------------------------------------------
-        // DREHUNG STARTEN
-        // --------------------------------------------------
 
         StartLayerRotation(
             move.axis,
             move.layer,
             move.direction
         );
-        
     }
 
-        // ==================================================
-        // INPUT MOVE
-        // ==================================================
 
-        public void ExecuteInputMove(CubeMove move)
-        {
+    // ==================================================
+    // INPUT MOVE
+    // ==================================================
+
+    public void ExecuteInputMove(CubeMove move)
+    {
         MakeMove(move);
-        }
+    }
+
 
     // ==================================================
     // UNDO
@@ -310,19 +288,10 @@ public class RubiksCube : MonoBehaviour
 
     private void UndoMove()
     {
-        // --------------------------------------------------
-        // PRÜFEN, OB BEREITS EINE DREHUNG LÄUFT
-        // --------------------------------------------------
-
         if (isRotating)
         {
             return;
         }
-
-
-        // --------------------------------------------------
-        // PRÜFEN, OB ES ZÜGE GIBT
-        // --------------------------------------------------
 
         if (moveHistory.Count == 0)
         {
@@ -333,38 +302,18 @@ public class RubiksCube : MonoBehaviour
             return;
         }
 
-
-        // --------------------------------------------------
-        // LETZTEN ZUG HOLEN
-        // --------------------------------------------------
-
         CubeMove lastMove =
             moveHistory[
                 moveHistory.Count - 1
             ];
 
-
-        // --------------------------------------------------
-        // AUS NORMALER HISTORY ENTFERNEN
-        // --------------------------------------------------
-
         moveHistory.RemoveAt(
             moveHistory.Count - 1
         );
 
-
-        // --------------------------------------------------
-        // IN REDO-HISTORY SPEICHERN
-        // --------------------------------------------------
-
         redoHistory.Add(
             lastMove
         );
-
-
-        // --------------------------------------------------
-        // GEGENZUG ERZEUGEN
-        // --------------------------------------------------
 
         CubeMove undoMove =
             new CubeMove(
@@ -373,22 +322,12 @@ public class RubiksCube : MonoBehaviour
                 -lastMove.direction
             );
 
-
-        // --------------------------------------------------
-        // DEBUG
-        // --------------------------------------------------
-
         Debug.Log(
             "Undo: " +
             MoveToString(lastMove) +
             " -> " +
             MoveToString(undoMove)
         );
-
-
-        // --------------------------------------------------
-        // GEGENZUG AUSFÜHREN
-        // --------------------------------------------------
 
         StartLayerRotation(
             undoMove.axis,
@@ -404,19 +343,10 @@ public class RubiksCube : MonoBehaviour
 
     private void RedoMove()
     {
-        // --------------------------------------------------
-        // PRÜFEN, OB BEREITS EINE DREHUNG LÄUFT
-        // --------------------------------------------------
-
         if (isRotating)
         {
             return;
         }
-
-
-        // --------------------------------------------------
-        // PRÜFEN, OB ES REDO-ZÜGE GIBT
-        // --------------------------------------------------
 
         if (redoHistory.Count == 0)
         {
@@ -427,48 +357,23 @@ public class RubiksCube : MonoBehaviour
             return;
         }
 
-
-        // --------------------------------------------------
-        // LETZTEN UNDO-ZUG HOLEN
-        // --------------------------------------------------
-
         CubeMove move =
             redoHistory[
                 redoHistory.Count - 1
             ];
 
-
-        // --------------------------------------------------
-        // AUS REDO-HISTORY ENTFERNEN
-        // --------------------------------------------------
-
         redoHistory.RemoveAt(
             redoHistory.Count - 1
         );
-
-
-        // --------------------------------------------------
-        // WIEDER IN NORMALE HISTORY
-        // --------------------------------------------------
 
         moveHistory.Add(
             move
         );
 
-
-        // --------------------------------------------------
-        // DEBUG
-        // --------------------------------------------------
-
         Debug.Log(
             "Redo: " +
             MoveToString(move)
         );
-
-
-        // --------------------------------------------------
-        // ORIGINALEN ZUG ERNEUT AUSFÜHREN
-        // --------------------------------------------------
 
         StartLayerRotation(
             move.axis,
@@ -489,7 +394,6 @@ public class RubiksCube : MonoBehaviour
             return;
         }
 
-
         StartCoroutine(
             ScrambleCoroutine()
         );
@@ -506,45 +410,29 @@ public class RubiksCube : MonoBehaviour
             "========== SCRAMBLE =========="
         );
 
-
-        // --------------------------------------------------
-        // ALTE REDO-HISTORY LÖSCHEN
-        // --------------------------------------------------
-
         redoHistory.Clear();
-
 
         List<CubeMove> scrambleMoves =
             new List<CubeMove>();
 
-
         RotationAxis lastAxis =
             RotationAxis.X;
 
-
         bool hasLastAxis = false;
-
-
-        // --------------------------------------------------
-        // ZÜGE ERZEUGEN
-        // --------------------------------------------------
 
         for (int i = 0; i < scrambleLength; i++)
         {
             CubeMove move;
 
-
             do
             {
                 move =
                     GenerateRandomMove();
-
             }
             while (
                 hasLastAxis &&
                 move.axis == lastAxis
             );
-
 
             scrambleMoves.Add(move);
 
@@ -554,12 +442,7 @@ public class RubiksCube : MonoBehaviour
         }
 
 
-        // --------------------------------------------------
-        // SCRAMBLE AUSGEBEN
-        // --------------------------------------------------
-
         string scrambleText = "";
-
 
         foreach (CubeMove move in scrambleMoves)
         {
@@ -568,43 +451,29 @@ public class RubiksCube : MonoBehaviour
                 " ";
         }
 
-
         Debug.Log(
             "Scramble: " +
             scrambleText
         );
 
 
-        // --------------------------------------------------
-        // ZÜGE AUSFÜHREN
-        // --------------------------------------------------
-
         foreach (CubeMove move in scrambleMoves)
         {
-            // Zug speichern
             moveHistory.Add(move);
 
-
-            // Bewegung starten
             StartLayerRotation(
                 move.axis,
                 move.layer,
                 move.direction
             );
 
-
-            // Warten, bis die Animation
-            // abgeschlossen ist.
             while (isRotating)
             {
                 yield return null;
             }
 
-
-            // Ein Frame Pause
             yield return null;
         }
-
 
         Debug.Log(
             "========== SCRAMBLE FERTIG =========="
@@ -625,11 +494,6 @@ public class RubiksCube : MonoBehaviour
                 3
             );
 
-
-        // --------------------------------------------------
-        // NUR AUSSENEBENEN
-        // --------------------------------------------------
-
         int layer;
 
         if (Random.value < 0.5f)
@@ -641,16 +505,10 @@ public class RubiksCube : MonoBehaviour
             layer = 1;
         }
 
-
-        // --------------------------------------------------
-        // RICHTUNG
-        // --------------------------------------------------
-
         int direction =
             Random.value < 0.5f
                 ? -1
                 : 1;
-
 
         return new CubeMove(
             axis,
@@ -669,11 +527,6 @@ public class RubiksCube : MonoBehaviour
     {
         string moveName = "";
 
-
-        // --------------------------------------------------
-        // X-ACHSE
-        // --------------------------------------------------
-
         if (move.axis ==
             RotationAxis.X)
         {
@@ -686,11 +539,6 @@ public class RubiksCube : MonoBehaviour
                 moveName = "L";
             }
         }
-
-
-        // --------------------------------------------------
-        // Y-ACHSE
-        // --------------------------------------------------
 
         else if (move.axis ==
                  RotationAxis.Y)
@@ -705,11 +553,6 @@ public class RubiksCube : MonoBehaviour
             }
         }
 
-
-        // --------------------------------------------------
-        // Z-ACHSE
-        // --------------------------------------------------
-
         else if (move.axis ==
                  RotationAxis.Z)
         {
@@ -723,16 +566,10 @@ public class RubiksCube : MonoBehaviour
             }
         }
 
-
-        // --------------------------------------------------
-        // RICHTUNG
-        // --------------------------------------------------
-
         if (move.direction == -1)
         {
             moveName += "'";
         }
-
 
         return moveName;
     }
@@ -746,16 +583,13 @@ public class RubiksCube : MonoBehaviour
     {
         cubies.Clear();
 
-
         Cubie[] foundCubies =
             GetComponentsInChildren<Cubie>();
-
 
         foreach (Cubie cubie in foundCubies)
         {
             cubies.Add(cubie);
         }
-
 
         Debug.Log(
             "Gefundene Cubies: " +
@@ -780,7 +614,6 @@ public class RubiksCube : MonoBehaviour
 
             return;
         }
-
 
         Debug.Log(
             "Rubik's Cube erfolgreich erkannt."
@@ -810,9 +643,7 @@ public class RubiksCube : MonoBehaviour
             Vector3Int position =
                 cubie.logicalPosition;
 
-
             bool belongsToLayer = false;
-
 
             switch (axis)
             {
@@ -839,7 +670,6 @@ public class RubiksCube : MonoBehaviour
 
                     break;
             }
-
 
             if (belongsToLayer)
             {
@@ -868,10 +698,6 @@ public class RubiksCube : MonoBehaviour
         }
 
 
-        // --------------------------------------------------
-        // DREHUNG STARTEN
-        // --------------------------------------------------
-
         isRotating = true;
 
 
@@ -884,20 +710,16 @@ public class RubiksCube : MonoBehaviour
                 "RotationPivot"
             );
 
-
         rotationPivot.transform.SetParent(
             transform,
             false
         );
 
-
         rotationPivot.transform.localPosition =
             Vector3.zero;
 
-
         rotationPivot.transform.localRotation =
             Quaternion.identity;
-
 
         rotationPivot.transform.localScale =
             Vector3.one;
@@ -922,7 +744,6 @@ public class RubiksCube : MonoBehaviour
 
         Vector3 rotationAxis =
             Vector3.zero;
-
 
         switch (axis)
         {
@@ -951,10 +772,6 @@ public class RubiksCube : MonoBehaviour
         }
 
 
-        // --------------------------------------------------
-        // ANIMATION STARTEN
-        // --------------------------------------------------
-
         StartCoroutine(
             AnimateRotation(
                 rotatingCubies,
@@ -978,21 +795,14 @@ public class RubiksCube : MonoBehaviour
     {
         float rotated = 0f;
 
-
-        // --------------------------------------------------
-        // 90 GRAD ANIMIEREN
-        // --------------------------------------------------
-
         while (rotated < 90f)
         {
             float rotationThisFrame =
                 rotationSpeed *
                 Time.deltaTime;
 
-
             float remaining =
                 90f - rotated;
-
 
             rotationThisFrame =
                 Mathf.Min(
@@ -1000,16 +810,13 @@ public class RubiksCube : MonoBehaviour
                     remaining
                 );
 
-
             rotationPivot.transform.Rotate(
                 rotationAxis,
                 rotationThisFrame * direction,
                 Space.Self
             );
 
-
             rotated += rotationThisFrame;
-
 
             yield return null;
         }
@@ -1037,7 +844,6 @@ public class RubiksCube : MonoBehaviour
                 false
             );
 
-
             cubie.ApplyLogicalPosition();
 
             cubie.ApplyLogicalRotation();
@@ -1046,20 +852,11 @@ public class RubiksCube : MonoBehaviour
         }
 
 
-        // --------------------------------------------------
-        // PIVOT LÖSCHEN
-        // --------------------------------------------------
-
         Destroy(
             rotationPivot
         );
 
         rotationPivot = null;
-
-
-        // --------------------------------------------------
-        // NEUE DREHUNG ERLAUBEN
-        // --------------------------------------------------
 
         isRotating = false;
     }
@@ -1117,6 +914,35 @@ public class RubiksCube : MonoBehaviour
         {
             Vector3Int oldPosition =
                 cubie.logicalPosition;
+
+
+            // ==================================================
+            // ORIENTATION INKREMENTELL AKTUALISIEREN
+            // ==================================================
+            //
+            // WICHTIG:
+            // oldPosition muss hier noch die Position VOR
+            // dem Zug enthalten.
+            //
+            // Corner:
+            // benötigt Achse, Richtung und alte Position.
+            //
+            // Edge:
+            // benötigt für unsere Konvention nur die Achse.
+            // Da rotatingCubies ausschließlich Cubies der
+            // gedrehten Ebene enthält, flippen bei Z-Zügen
+            // automatisch nur die vier betroffenen Edges.
+            // ==================================================
+
+            cubie.UpdateCornerOrientation(
+                axis,
+                direction,
+                oldPosition
+            );
+
+            cubie.UpdateEdgeOrientation(
+                axis
+            );
 
 
             int x =
@@ -1230,7 +1056,6 @@ public class RubiksCube : MonoBehaviour
             "========== CUBE STATE =========="
         );
 
-
         foreach (Cubie cubie in cubies)
         {
             Debug.Log(
@@ -1239,7 +1064,6 @@ public class RubiksCube : MonoBehaviour
                 cubie.GetState()
             );
         }
-
 
         Debug.Log(
             "================================"
@@ -1255,20 +1079,11 @@ public class RubiksCube : MonoBehaviour
     {
         foreach (Cubie cubie in cubies)
         {
-            // ------------------------------------------
-            // POSITION PRÜFEN
-            // ------------------------------------------
-
             if (cubie.logicalPosition !=
                 cubie.originalPosition)
             {
                 return false;
             }
-
-
-            // ------------------------------------------
-            // STICKER-ORIENTIERUNG PRÜFEN
-            // ------------------------------------------
 
             foreach (CubieSticker sticker in cubie.stickers)
             {
@@ -1279,7 +1094,6 @@ public class RubiksCube : MonoBehaviour
                 }
             }
         }
-
 
         return true;
     }
