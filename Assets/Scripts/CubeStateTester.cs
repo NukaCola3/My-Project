@@ -65,6 +65,12 @@ public class CubeStateTester : MonoBehaviour
 
     public float waitAfterMove = 0.1f;
 
+    [Header("Random Stress Test")]
+
+    public int randomTestMoveCount = 1000;
+
+    public float randomTestWaitAfterMove = 0f;
+
 
     // ======================================================
     // SOLVER TEST STATE
@@ -1813,4 +1819,864 @@ public class CubeStateTester : MonoBehaviour
             );
         }
     }
+// ======================================================
+// RANDOM SOLVER STRESS TEST
+// ======================================================
+
+[ContextMenu("Run Random Stress Test")]
+public void RunRandomStressTest()
+{
+    if (rubiksCube == null)
+    {
+        Debug.LogError(
+            "CubeStateTester: RubiksCube fehlt."
+        );
+
+        return;
+    }
+
+
+    if (rubiksCube.cubies == null)
+    {
+        Debug.LogError(
+            "CubeStateTester: Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+
+    if (randomTestMoveCount <= 0)
+    {
+        Debug.LogError(
+            "Random Test Move Count muss größer als 0 sein."
+        );
+
+        return;
+    }
+
+
+    StopAllCoroutines();
+
+    StartCoroutine(
+        RunRandomStressTestCoroutine()
+    );
+}
+
+
+// ======================================================
+// RANDOM STRESS TEST COROUTINE
+// ======================================================
+
+private IEnumerator RunRandomStressTestCoroutine()
+{
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START RANDOM SOLVER STRESS TEST"
+    );
+
+    Debug.Log(
+        "Anzahl Moves: " +
+        randomTestMoveCount
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    // ==================================================
+    // SolverState genau EINMAL vom aktuellen Unity-Würfel
+    // kopieren.
+    //
+    // Danach läuft er wieder komplett unabhängig.
+    // ==================================================
+
+    simulatedSolverState =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    if (!simulatedSolverState.IsValid())
+    {
+        Debug.LogError(
+            "Initialer SolverState ist ungültig."
+        );
+
+        yield break;
+    }
+
+
+    if (!CompareUnityWithSimulatedSolver(
+        "RANDOM START"
+    ))
+    {
+        Debug.LogError(
+            "Unity und SolverState stimmen bereits " +
+            "am Start nicht überein."
+        );
+
+        yield break;
+    }
+
+
+    // Die komplette Zufallssequenz speichern.
+    //
+    // Falls irgendwann ein Fehler auftritt, können wir
+    // exakt sehen, welche Moves vorher ausgeführt wurden.
+
+    List<string> executedMoves =
+        new List<string>();
+
+
+    string previousMoveBase = "";
+
+
+    for (
+        int i = 0;
+        i < randomTestMoveCount;
+        i++
+    )
+    {
+        // ==============================================
+        // ZUFÄLLIGEN MOVE ERZEUGEN
+        // ==============================================
+
+        string move =
+            GenerateRandomTestMove(
+                previousMoveBase
+            );
+
+
+        string currentMoveBase =
+            GetBaseMove(move);
+
+
+        previousMoveBase =
+            currentMoveBase;
+
+
+        executedMoves.Add(move);
+
+
+        // ==============================================
+        // UNITY
+        // ==============================================
+
+        yield return
+            ExecuteAndWait(move);
+
+
+        // ==============================================
+        // SOLVERSTATE
+        // ==============================================
+
+        bool solverMoveExecuted =
+            simulatedSolverState
+                .ApplyMove(move);
+
+
+        if (!solverMoveExecuted)
+        {
+            Debug.LogError(
+                "SolverState konnte Random-Move " +
+                "nicht ausführen: " +
+                move
+            );
+
+            PrintRandomSequence(
+                executedMoves
+            );
+
+            yield break;
+        }
+
+
+        // ==============================================
+        // SOLVER INTERN VALIDIEREN
+        // ==============================================
+
+        if (!simulatedSolverState.IsValid())
+        {
+            Debug.LogError(
+                "SOLVERSTATE UNGÜLTIG"
+            );
+
+            Debug.LogError(
+                "Random Move Nummer: " +
+                (i + 1)
+            );
+
+            Debug.LogError(
+                "Move: " +
+                move
+            );
+
+            PrintRandomSequence(
+                executedMoves
+            );
+
+            simulatedSolverState.Print();
+
+            yield break;
+        }
+
+
+        // ==============================================
+        // UNITY INTERN VALIDIEREN
+        // ==============================================
+
+        if (!ValidateState())
+        {
+            Debug.LogError(
+                "UNITY-STATE UNGÜLTIG"
+            );
+
+            Debug.LogError(
+                "Random Move Nummer: " +
+                (i + 1)
+            );
+
+            Debug.LogError(
+                "Move: " +
+                move
+            );
+
+            PrintRandomSequence(
+                executedMoves
+            );
+
+            yield break;
+        }
+
+
+        // ==============================================
+        // UNITY <-> SOLVER VERGLEICH
+        // ==============================================
+
+        string context =
+            "Random Move " +
+            (i + 1) +
+            "/" +
+            randomTestMoveCount +
+            " | " +
+            move;
+
+
+        if (!CompareUnityWithSimulatedSolver(
+            context
+        ))
+        {
+            Debug.LogError(
+                "RANDOM PARALLELTEST FEHLGESCHLAGEN"
+            );
+
+            Debug.LogError(
+                "Fehler bei Move Nummer: " +
+                (i + 1)
+            );
+
+            Debug.LogError(
+                "Move: " +
+                move
+            );
+
+            PrintRandomSequence(
+                executedMoves
+            );
+
+            yield break;
+        }
+
+
+        // ==============================================
+        // FORTSCHRITT
+        // ==============================================
+
+        if (
+            (i + 1) % 100 == 0 ||
+            i == 0
+        )
+        {
+            Debug.Log(
+                "Random Stress Test: " +
+                (i + 1) +
+                "/" +
+                randomTestMoveCount +
+                " Moves OK"
+            );
+        }
+
+
+        if (randomTestWaitAfterMove > 0f)
+        {
+            yield return
+                new WaitForSeconds(
+                    randomTestWaitAfterMove
+                );
+        }
+    }
+
+
+    // ==================================================
+    // TEST BESTANDEN
+    // ==================================================
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "RANDOM SOLVER STRESS TEST BESTANDEN"
+    );
+
+    Debug.Log(
+        randomTestMoveCount +
+        " ZUFÄLLIGE MOVES OHNE ABWEICHUNG"
+    );
+
+    Debug.Log(
+        "Unity und SolverState waren nach jedem Move identisch."
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+}
+
+
+// ======================================================
+// RANDOM MOVE GENERATOR
+// ======================================================
+
+private string GenerateRandomTestMove(
+    string previousMoveBase)
+{
+    string[] baseMoves =
+    {
+        "U",
+        "D",
+        "R",
+        "L",
+        "F",
+        "B"
+    };
+
+
+    string selectedBase;
+
+
+    // Nicht unmittelbar dieselbe Fläche erneut wählen.
+    //
+    // Dadurch bekommen wir interessantere Sequenzen
+    // statt z.B. R R R R.
+
+    do
+    {
+        selectedBase =
+            baseMoves[
+                Random.Range(
+                    0,
+                    baseMoves.Length
+                )
+            ];
+    }
+    while (
+        selectedBase ==
+        previousMoveBase
+    );
+
+
+    int variant =
+        Random.Range(
+            0,
+            2
+        );
+
+
+    if (variant == 0)
+    {
+        return selectedBase;
+    }
+
+
+    return selectedBase + "'";
+}
+
+
+// ======================================================
+// BASE MOVE
+// ======================================================
+
+private string GetBaseMove(
+    string move)
+{
+    if (string.IsNullOrWhiteSpace(
+        move
+    ))
+    {
+        return "";
+    }
+
+
+    return move
+        .Replace("'", "")
+        .Replace("2", "")
+        .Trim()
+        .ToUpperInvariant();
+}
+
+
+    // ======================================================
+    // RANDOM SEQUENCE AUSGEBEN
+    // ======================================================
+
+    private void PrintRandomSequence(
+        List<string> moves)
+    {
+        string sequence =
+            string.Join(
+                " ",
+                moves
+            );
+
+
+        Debug.LogError(
+            "========================================"
+        );
+
+        Debug.LogError(
+            "SEQUENZ BIS ZUM FEHLER:"
+        );
+
+        Debug.LogError(
+            sequence
+        );
+
+        Debug.LogError(
+            "========================================"
+        );
+    }
+
+// ======================================================
+// SOLVERSTATE CLONE TEST
+// ======================================================
+
+[ContextMenu("Run Clone Test")]
+public void RunCloneTest()
+{
+    if (rubiksCube == null)
+    {
+        Debug.LogError(
+            "CLONE TEST: RubiksCube fehlt."
+        );
+
+        return;
+    }
+
+
+    if (rubiksCube.cubies == null)
+    {
+        Debug.LogError(
+            "CLONE TEST: Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START SOLVERSTATE CLONE TEST"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    // ==================================================
+    // 1. ORIGINAL AUS UNITY ERZEUGEN
+    // ==================================================
+
+    SolverState original =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    if (!original.IsValid())
+    {
+        Debug.LogError(
+            "CLONE TEST: Original ist ungültig."
+        );
+
+        return;
+    }
+
+
+    // ==================================================
+    // 2. ORIGINAL NOCH EINMAL KOPIEREN
+    //
+    // Diese Kopie dient nur als unveränderter
+    // Referenzzustand für den späteren Vergleich.
+    // ==================================================
+
+    SolverState originalBefore =
+        original.Clone();
+
+
+    // ==================================================
+    // 3. EIGENTLICHEN CLONE ERZEUGEN
+    // ==================================================
+
+    SolverState clone =
+        original.Clone();
+
+
+    // ==================================================
+    // 4. PRÜFEN:
+    // ORIGINAL UND CLONE MÜSSEN ZUNÄCHST IDENTISCH SEIN
+    // ==================================================
+
+    if (!AreSolverStatesEqual(
+        original,
+        clone
+    ))
+    {
+        Debug.LogError(
+            "CLONE TEST FEHLER: " +
+            "Clone stimmt direkt nach Clone() " +
+            "nicht mit Original überein."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "Clone entspricht dem Original: OK"
+    );
+
+
+    // ==================================================
+    // 5. NUR DEN CLONE VERÄNDERN
+    // ==================================================
+
+    bool moveExecuted =
+        clone.ApplyMove("R");
+
+
+    if (!moveExecuted)
+    {
+        Debug.LogError(
+            "CLONE TEST FEHLER: " +
+            "R konnte auf dem Clone " +
+            "nicht ausgeführt werden."
+        );
+
+        return;
+    }
+
+
+    // ==================================================
+    // 6. CLONE MUSS WEITERHIN GÜLTIG SEIN
+    // ==================================================
+
+    if (!clone.IsValid())
+    {
+        Debug.LogError(
+            "CLONE TEST FEHLER: " +
+            "Clone ist nach R ungültig."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "Clone nach R weiterhin gültig: OK"
+    );
+
+
+    // ==================================================
+    // 7. ORIGINAL DARF SICH NICHT VERÄNDERT HABEN
+    // ==================================================
+
+    if (!AreSolverStatesEqual(
+        original,
+        originalBefore
+    ))
+    {
+        Debug.LogError(
+            "CLONE TEST FEHLER: " +
+            "Änderung am Clone hat das " +
+            "Original verändert."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "Original blieb unverändert: OK"
+    );
+
+
+    // ==================================================
+    // 8. CLONE MUSS JETZT ANDERS ALS ORIGINAL SEIN
+    // ==================================================
+
+    if (AreSolverStatesEqual(
+        original,
+        clone
+    ))
+    {
+        Debug.LogError(
+            "CLONE TEST FEHLER: " +
+            "Clone ist nach R noch immer " +
+            "identisch mit dem Original."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "Clone ist nach R unabhängig verändert: OK"
+    );
+
+
+    // ==================================================
+    // 9. ORIGINAL MUSS WEITERHIN GÜLTIG SEIN
+    // ==================================================
+
+    if (!original.IsValid())
+    {
+        Debug.LogError(
+            "CLONE TEST FEHLER: " +
+            "Original ist nach Änderung des " +
+            "Clones ungültig."
+        );
+
+        return;
+    }
+
+
+    // ==================================================
+    // 10. UNITY DARF NICHT VERÄNDERT WORDEN SEIN
+    //
+    // Wir erzeugen jetzt einen neuen SolverState direkt
+    // aus Unity und vergleichen ihn mit unserem Original.
+    // ==================================================
+
+    SolverState unityStateAfter =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    if (!AreSolverStatesEqual(
+        originalBefore,
+        unityStateAfter
+    ))
+    {
+        Debug.LogError(
+            "CLONE TEST FEHLER: " +
+            "Unity-Würfel wurde durch die " +
+            "Solver-Simulation verändert."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "Unity-Würfel blieb unverändert: OK"
+    );
+
+
+    // ==================================================
+    // TEST BESTANDEN
+    // ==================================================
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "SOLVERSTATE CLONE TEST BESTANDEN"
+    );
+
+    Debug.Log(
+        "Clone ist vollständig unabhängig."
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+}
+
+
+// ======================================================
+// SOLVERSTATE VERGLEICH
+// ======================================================
+
+private bool AreSolverStatesEqual(
+    SolverState a,
+    SolverState b)
+{
+    if (
+        a == null ||
+        b == null
+    )
+    {
+        return false;
+    }
+
+
+    if (
+        a.corners.Count !=
+        b.corners.Count
+    )
+    {
+        return false;
+    }
+
+
+    if (
+        a.edges.Count !=
+        b.edges.Count
+    )
+    {
+        return false;
+    }
+
+
+    // ==================================================
+    // CORNERS
+    // ==================================================
+
+    foreach (
+        SolverPieceState pieceA
+        in a.corners
+    )
+    {
+        bool found = false;
+
+
+        foreach (
+            SolverPieceState pieceB
+            in b.corners
+        )
+        {
+            if (
+                pieceA.pieceID !=
+                pieceB.pieceID
+            )
+            {
+                continue;
+            }
+
+
+            found = true;
+
+
+            if (
+                pieceA.position !=
+                pieceB.position
+            )
+            {
+                return false;
+            }
+
+
+            if (
+                pieceA.orientation !=
+                pieceB.orientation
+            )
+            {
+                return false;
+            }
+
+
+            break;
+        }
+
+
+        if (!found)
+        {
+            return false;
+        }
+    }
+
+
+    // ==================================================
+    // EDGES
+    // ==================================================
+
+    foreach (
+        SolverPieceState pieceA
+        in a.edges
+    )
+    {
+        bool found = false;
+
+
+        foreach (
+            SolverPieceState pieceB
+            in b.edges
+        )
+        {
+            if (
+                pieceA.pieceID !=
+                pieceB.pieceID
+            )
+            {
+                continue;
+            }
+
+
+            found = true;
+
+
+            if (
+                pieceA.position !=
+                pieceB.position
+            )
+            {
+                return false;
+            }
+
+
+            if (
+                pieceA.orientation !=
+                pieceB.orientation
+            )
+            {
+                return false;
+            }
+
+
+            break;
+        }
+
+
+        if (!found)
+        {
+            return false;
+        }
+    }
+
+
+    return true;
+}
+
 }

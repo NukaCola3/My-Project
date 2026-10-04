@@ -3399,13 +3399,31 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 349917125}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d440923694544f43cab27320bfe1160f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CubeStateTester
-  rubiksCube: {fileID: 0}
-  delayBetweenMoves: 0.5
+  rubiksCube: {fileID: 349917130}
+  testSequences:
+  - R R'
+  - L L'
+  - U U'
+  - D D'
+  - F F'
+  - B B'
+  - R U U' R'
+  - F U U' F'
+  - R F F' R'
+  - F R R' F'
+  - R U R' U' U R U' R'
+  - F R U U' R' F'
+  - R U F F' U' R'
+  - R U F L L' F' U' R'
+  - R U F L D B B' D' L' F' U' R'
+  waitAfterMove: 0.1
+  randomTestMoveCount: 1000
+  randomTestWaitAfterMove: 0
 --- !u!1 &350437676
 GameObject:
   m_ObjectHideFlags: 0

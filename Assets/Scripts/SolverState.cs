@@ -1,15 +1,28 @@
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 
 // ==========================================================
 // SOLVER PIECE STATE
 // ==========================================================
+//
+// Repräsentiert den logischen Zustand eines einzelnen
+// beweglichen Pieces.
+//
+// Corner:
+// orientation = 0, 1 oder 2
+//
+// Edge:
+// orientation = 0 oder 1
+// ==========================================================
 
 public struct SolverPieceState
 {
     public string pieceID;
+
     public Vector3Int position;
+
     public int orientation;
 
 
@@ -37,36 +50,65 @@ public struct SolverPieceState
 // ==========================================================
 // SOLVER STATE
 // ==========================================================
+//
+// Unabhängige logische Repräsentation des Rubik's Cube.
+//
+// Enthält:
+// - 8 Corners
+// - 12 Edges
+//
+// Unity-GameObjects werden hier NICHT verändert.
+// ==========================================================
 
 public class SolverState
 {
+    // ======================================================
+    // PIECES
+    // ======================================================
+
     public List<SolverPieceState> corners =
         new List<SolverPieceState>();
+
 
     public List<SolverPieceState> edges =
         new List<SolverPieceState>();
 
 
     // ======================================================
-    // KONSTRUKTOREN
+    // CONSTRUCTOR FROM UNITY CUBIES
     // ======================================================
 
-    public SolverState()
+    public SolverState(
+        List<Cubie> cubies)
     {
+        BuildFromCubies(
+            cubies
+        );
     }
 
 
-    public SolverState(List<Cubie> cubies)
+    // ======================================================
+    // PRIVATE EMPTY CONSTRUCTOR
+    // ======================================================
+    //
+    // Wird von Clone() verwendet.
+    // ======================================================
+
+    private SolverState()
     {
-        BuildFromCubies(cubies);
+        corners =
+            new List<SolverPieceState>();
+
+        edges =
+            new List<SolverPieceState>();
     }
 
 
     // ======================================================
-    // AUS UNITY-CUBIES KOPIEREN
+    // BUILD FROM UNITY
     // ======================================================
 
-    public void BuildFromCubies(
+    private void BuildFromCubies(
         List<Cubie> cubies)
     {
         corners.Clear();
@@ -83,86 +125,436 @@ public class SolverState
         }
 
 
-        foreach (Cubie cubie in cubies)
+        foreach (
+            Cubie cubie
+            in cubies
+        )
         {
             if (cubie == null)
+            {
                 continue;
+            }
 
 
-            if (cubie.Type == CubieType.Corner)
+            SolverPieceState state =
+                new SolverPieceState(
+                    cubie.pieceID,
+                    cubie.logicalPosition,
+                    cubie.orientation
+                );
+
+
+            if (
+                cubie.Type ==
+                CubieType.Corner
+            )
             {
                 corners.Add(
-                    new SolverPieceState(
-                        cubie.pieceID,
-                        cubie.logicalPosition,
-                        cubie.orientation
-                    )
+                    state
                 );
             }
 
 
-            else if (cubie.Type == CubieType.Edge)
+            else if (
+                cubie.Type ==
+                CubieType.Edge
+            )
             {
                 edges.Add(
-                    new SolverPieceState(
-                        cubie.pieceID,
-                        cubie.logicalPosition,
-                        cubie.orientation
-                    )
+                    state
                 );
             }
         }
 
 
-        SortPieces();
-    }
+        // ==================================================
+        // STABILE REIHENFOLGE
+        // ==================================================
+        //
+        // Wichtig für:
+        // - State Keys
+        // - reproduzierbare Ausgabe
+        // - spätere Solver-Suche
+        // ==================================================
 
-
-    // ======================================================
-    // FESTE REIHENFOLGE
-    // ======================================================
-
-    private void SortPieces()
-    {
         corners.Sort(
             (a, b) =>
-                string.Compare(
+                string.CompareOrdinal(
                     a.pieceID,
-                    b.pieceID,
-                    System.StringComparison.Ordinal
+                    b.pieceID
                 )
         );
 
 
         edges.Sort(
             (a, b) =>
-                string.Compare(
+                string.CompareOrdinal(
                     a.pieceID,
-                    b.pieceID,
-                    System.StringComparison.Ordinal
+                    b.pieceID
                 )
         );
     }
 
 
     // ======================================================
-    // MOVE AUS STRING
+    // CLONE
+    // ======================================================
+    //
+    // Erzeugt eine unabhängige Kopie.
+    //
+    // Da SolverPieceState ein struct ist, werden die
+    // einzelnen Piece-Zustände als Werte kopiert.
     // ======================================================
 
-    public bool ApplyMove(string move)
+    public SolverState Clone()
     {
-        if (string.IsNullOrWhiteSpace(move))
-        {
-            Debug.LogError(
-                "SolverState: Leerer Move."
+        SolverState clone =
+            new SolverState();
+
+
+        clone.corners =
+            new List<SolverPieceState>(
+                corners
             );
 
+
+        clone.edges =
+            new List<SolverPieceState>(
+                edges
+            );
+
+
+        return clone;
+    }
+
+
+    // ======================================================
+    // STATE COMPARISON
+    // ======================================================
+    //
+    // Prüft, ob zwei SolverStates exakt denselben
+    // Würfelzustand repräsentieren.
+    // ======================================================
+
+    public bool IsSameState(
+        SolverState other)
+    {
+        if (other == null)
+        {
+            return false;
+        }
+
+
+        if (
+            corners.Count !=
+            other.corners.Count
+        )
+        {
+            return false;
+        }
+
+
+        if (
+            edges.Count !=
+            other.edges.Count
+        )
+        {
+            return false;
+        }
+
+
+        // ==================================================
+        // CORNERS
+        // ==================================================
+
+        foreach (
+            SolverPieceState piece
+            in corners
+        )
+        {
+            bool found = false;
+
+
+            foreach (
+                SolverPieceState otherPiece
+                in other.corners
+            )
+            {
+                if (
+                    piece.pieceID !=
+                    otherPiece.pieceID
+                )
+                {
+                    continue;
+                }
+
+
+                found = true;
+
+
+                if (
+                    piece.position !=
+                    otherPiece.position
+                )
+                {
+                    return false;
+                }
+
+
+                if (
+                    piece.orientation !=
+                    otherPiece.orientation
+                )
+                {
+                    return false;
+                }
+
+
+                break;
+            }
+
+
+            if (!found)
+            {
+                return false;
+            }
+        }
+
+
+        // ==================================================
+        // EDGES
+        // ==================================================
+
+        foreach (
+            SolverPieceState piece
+            in edges
+        )
+        {
+            bool found = false;
+
+
+            foreach (
+                SolverPieceState otherPiece
+                in other.edges
+            )
+            {
+                if (
+                    piece.pieceID !=
+                    otherPiece.pieceID
+                )
+                {
+                    continue;
+                }
+
+
+                found = true;
+
+
+                if (
+                    piece.position !=
+                    otherPiece.position
+                )
+                {
+                    return false;
+                }
+
+
+                if (
+                    piece.orientation !=
+                    otherPiece.orientation
+                )
+                {
+                    return false;
+                }
+
+
+                break;
+            }
+
+
+            if (!found)
+            {
+                return false;
+            }
+        }
+
+
+        return true;
+    }
+
+
+    // ======================================================
+    // STATE KEY
+    // ======================================================
+    //
+    // Erzeugt einen eindeutigen String für den kompletten
+    // Solver-Zustand.
+    //
+    // Identischer Zustand:
+    //     gleicher Key
+    //
+    // Andere Position oder Orientation:
+    //     anderer Key
+    //
+    // Die Piece-Listen besitzen eine stabile Sortierung
+    // nach pieceID.
+    // ======================================================
+
+    public string GetStateKey()
+    {
+        StringBuilder builder =
+            new StringBuilder();
+
+
+        // ==================================================
+        // CORNERS
+        // ==================================================
+
+        builder.Append(
+            "C:"
+        );
+
+
+        foreach (
+            SolverPieceState corner
+            in corners
+        )
+        {
+            builder.Append(
+                corner.pieceID
+            );
+
+            builder.Append(
+                "@"
+            );
+
+            builder.Append(
+                corner.position.x
+            );
+
+            builder.Append(
+                ","
+            );
+
+            builder.Append(
+                corner.position.y
+            );
+
+            builder.Append(
+                ","
+            );
+
+            builder.Append(
+                corner.position.z
+            );
+
+            builder.Append(
+                ":"
+            );
+
+            builder.Append(
+                corner.orientation
+            );
+
+            builder.Append(
+                "|"
+            );
+        }
+
+
+        // ==================================================
+        // EDGES
+        // ==================================================
+
+        builder.Append(
+            "E:"
+        );
+
+
+        foreach (
+            SolverPieceState edge
+            in edges
+        )
+        {
+            builder.Append(
+                edge.pieceID
+            );
+
+            builder.Append(
+                "@"
+            );
+
+            builder.Append(
+                edge.position.x
+            );
+
+            builder.Append(
+                ","
+            );
+
+            builder.Append(
+                edge.position.y
+            );
+
+            builder.Append(
+                ","
+            );
+
+            builder.Append(
+                edge.position.z
+            );
+
+            builder.Append(
+                ":"
+            );
+
+            builder.Append(
+                edge.orientation
+            );
+
+            builder.Append(
+                "|"
+            );
+        }
+
+
+        return builder.ToString();
+    }
+
+
+    // ======================================================
+    // APPLY MOVE FROM STRING
+    // ======================================================
+    //
+    // Unterstützt:
+    //
+    // U U'
+    // D D'
+    // R R'
+    // L L'
+    // F F'
+    // B B'
+    //
+    // Zusätzlich:
+    //
+    // U2 D2 R2 L2 F2 B2
+    // ======================================================
+
+    public bool ApplyMove(
+        string move)
+    {
+        if (string.IsNullOrWhiteSpace(
+            move
+        ))
+        {
             return false;
         }
 
 
         string token =
-            move.Trim().ToUpperInvariant();
+            move
+                .Trim()
+                .ToUpperInvariant();
 
 
         bool prime =
@@ -181,55 +573,124 @@ public class SolverState
 
 
         RotationAxis axis;
+
         int layer;
+
         int direction;
 
 
         switch (baseMove)
         {
+            // ==============================================
+            // U
+            // ==============================================
+
             case "U":
-                axis = RotationAxis.Y;
-                layer = 1;
-                direction = 1;
+
+                axis =
+                    RotationAxis.Y;
+
+                layer =
+                    1;
+
+                direction =
+                    1;
+
                 break;
 
+
+            // ==============================================
+            // D
+            // ==============================================
 
             case "D":
-                axis = RotationAxis.Y;
-                layer = -1;
-                direction = -1;
+
+                axis =
+                    RotationAxis.Y;
+
+                layer =
+                    -1;
+
+                direction =
+                    -1;
+
                 break;
 
+
+            // ==============================================
+            // R
+            // ==============================================
 
             case "R":
-                axis = RotationAxis.X;
-                layer = 1;
-                direction = 1;
+
+                axis =
+                    RotationAxis.X;
+
+                layer =
+                    1;
+
+                direction =
+                    1;
+
                 break;
 
+
+            // ==============================================
+            // L
+            // ==============================================
 
             case "L":
-                axis = RotationAxis.X;
-                layer = -1;
-                direction = -1;
+
+                axis =
+                    RotationAxis.X;
+
+                layer =
+                    -1;
+
+                direction =
+                    -1;
+
                 break;
 
+
+            // ==============================================
+            // F
+            // ==============================================
 
             case "F":
-                axis = RotationAxis.Z;
-                layer = 1;
-                direction = -1;
+
+                axis =
+                    RotationAxis.Z;
+
+                layer =
+                    1;
+
+                direction =
+                    -1;
+
                 break;
 
 
+            // ==============================================
+            // B
+            // ==============================================
+
             case "B":
-                axis = RotationAxis.Z;
-                layer = -1;
-                direction = 1;
+
+                axis =
+                    RotationAxis.Z;
+
+                layer =
+                    -1;
+
+                direction =
+                    1;
+
                 break;
 
 
             default:
+
                 Debug.LogError(
                     "SolverState: Unbekannter Move: " +
                     move
@@ -239,11 +700,19 @@ public class SolverState
         }
 
 
+        // ==================================================
+        // PRIME
+        // ==================================================
+
         if (prime)
         {
             direction *= -1;
         }
 
+
+        // ==================================================
+        // MOVE AUSFÜHREN
+        // ==================================================
 
         ApplyMove(
             axis,
@@ -251,6 +720,10 @@ public class SolverState
             direction
         );
 
+
+        // ==================================================
+        // 180° MOVE
+        // ==================================================
 
         if (twice)
         {
@@ -267,7 +740,7 @@ public class SolverState
 
 
     // ======================================================
-    // MOVE DIREKT AUSFÜHREN
+    // APPLY LOGICAL MOVE
     // ======================================================
 
     public void ApplyMove(
@@ -291,7 +764,7 @@ public class SolverState
 
 
     // ======================================================
-    // CORNERS DREHEN
+    // APPLY CORNER MOVE
     // ======================================================
 
     private void ApplyCornerMove(
@@ -299,7 +772,11 @@ public class SolverState
         int layer,
         int direction)
     {
-        for (int i = 0; i < corners.Count; i++)
+        for (
+            int i = 0;
+            i < corners.Count;
+            i++
+        )
         {
             SolverPieceState corner =
                 corners[i];
@@ -319,77 +796,96 @@ public class SolverState
                 corner.position;
 
 
-            // ==================================================
+            // ==============================================
             // CORNER ORIENTATION
-            // ==================================================
+            // ==============================================
             //
-            // Gleiche Regeln wie in Cubie.UpdateCornerOrientation.
-            //
-            // Y-Züge verändern die Corner-Orientation nicht.
-            // ==================================================
+            // Muss exakt derselben Konvention wie
+            // Cubie.UpdateCornerOrientation() folgen.
+            // ==============================================
 
-            if (axis != RotationAxis.Y)
+            int delta = 0;
+
+
+            // ==============================================
+            // Y
+            // ==============================================
+            //
+            // U/D verändern die Corner Orientation nicht.
+            // ==============================================
+
+            if (
+                axis ==
+                RotationAxis.Y
+            )
             {
-                int delta = 0;
-
-
-                // ----------------------------------------------
-                // X
-                // ----------------------------------------------
-
-                if (axis == RotationAxis.X)
-                {
-                    if (direction > 0)
-                    {
-                        delta =
-                            oldPosition.z > 0
-                                ? 1
-                                : 2;
-                    }
-                    else
-                    {
-                        delta =
-                            oldPosition.z > 0
-                                ? 2
-                                : 1;
-                    }
-                }
-
-
-                // ----------------------------------------------
-                // Z
-                // ----------------------------------------------
-
-                else if (axis == RotationAxis.Z)
-                {
-                    if (direction < 0)
-                    {
-                        delta =
-                            oldPosition.x > 0
-                                ? 2
-                                : 1;
-                    }
-                    else
-                    {
-                        delta =
-                            oldPosition.x > 0
-                                ? 1
-                                : 2;
-                    }
-                }
-
-
-                corner.orientation =
-                    (
-                        corner.orientation +
-                        delta
-                    ) % 3;
+                delta = 0;
             }
 
 
-            // ==================================================
+            // ==============================================
+            // X
+            // ==============================================
+
+            else if (
+                axis ==
+                RotationAxis.X
+            )
+            {
+                if (direction > 0)
+                {
+                    delta =
+                        oldPosition.z > 0
+                            ? 1
+                            : 2;
+                }
+                else
+                {
+                    delta =
+                        oldPosition.z > 0
+                            ? 2
+                            : 1;
+                }
+            }
+
+
+            // ==============================================
+            // Z
+            // ==============================================
+
+            else if (
+                axis ==
+                RotationAxis.Z
+            )
+            {
+                if (direction < 0)
+                {
+                    delta =
+                        oldPosition.x > 0
+                            ? 2
+                            : 1;
+                }
+                else
+                {
+                    delta =
+                        oldPosition.x > 0
+                            ? 1
+                            : 2;
+                }
+            }
+
+
+            corner.orientation =
+                (
+                    corner.orientation +
+                    delta
+                )
+                % 3;
+
+
+            // ==============================================
             // POSITION
-            // ==================================================
+            // ==============================================
 
             corner.position =
                 RotatePosition(
@@ -399,7 +895,10 @@ public class SolverState
                 );
 
 
-            // struct zurückschreiben
+            // ==============================================
+            // STRUCT ZURÜCK IN LISTE SCHREIBEN
+            // ==============================================
+
             corners[i] =
                 corner;
         }
@@ -407,7 +906,7 @@ public class SolverState
 
 
     // ======================================================
-    // EDGES DREHEN
+    // APPLY EDGE MOVE
     // ======================================================
 
     private void ApplyEdgeMove(
@@ -415,7 +914,11 @@ public class SolverState
         int layer,
         int direction)
     {
-        for (int i = 0; i < edges.Count; i++)
+        for (
+            int i = 0;
+            i < edges.Count;
+            i++
+        )
         {
             SolverPieceState edge =
                 edges[i];
@@ -435,18 +938,18 @@ public class SolverState
                 edge.position;
 
 
-            // ==================================================
+            // ==============================================
             // EDGE ORIENTATION
-            // ==================================================
+            // ==============================================
             //
-            // Gleiche Konvention wie im Unity-Cubie:
-            //
-            // U/D -> kein Flip
-            // R/L -> kein Flip
-            // F/B -> Flip
-            // ==================================================
+            // In unserer aktuellen Konvention flippen
+            // Edges nur bei F/B-Zügen.
+            // ==============================================
 
-            if (axis == RotationAxis.Z)
+            if (
+                axis ==
+                RotationAxis.Z
+            )
             {
                 edge.orientation =
                     1 -
@@ -454,9 +957,9 @@ public class SolverState
             }
 
 
-            // ==================================================
+            // ==============================================
             // POSITION
-            // ==================================================
+            // ==============================================
 
             edge.position =
                 RotatePosition(
@@ -466,7 +969,10 @@ public class SolverState
                 );
 
 
-            // struct zurückschreiben
+            // ==============================================
+            // STRUCT ZURÜCK IN LISTE SCHREIBEN
+            // ==============================================
+
             edges[i] =
                 edge;
         }
@@ -474,7 +980,7 @@ public class SolverState
 
 
     // ======================================================
-    // LIEGT PIECE IN EBENE?
+    // IS PIECE IN LAYER?
     // ======================================================
 
     private bool IsInLayer(
@@ -485,18 +991,24 @@ public class SolverState
         switch (axis)
         {
             case RotationAxis.X:
+
                 return
-                    position.x == layer;
+                    position.x ==
+                    layer;
 
 
             case RotationAxis.Y:
+
                 return
-                    position.y == layer;
+                    position.y ==
+                    layer;
 
 
             case RotationAxis.Z:
+
                 return
-                    position.z == layer;
+                    position.z ==
+                    layer;
         }
 
 
@@ -505,7 +1017,11 @@ public class SolverState
 
 
     // ======================================================
-    // POSITION DREHEN
+    // ROTATE POSITION
+    // ======================================================
+    //
+    // Exakt dieselben Transformationen wie
+    // RubiksCube.UpdateLogicalState().
     // ======================================================
 
     private Vector3Int RotatePosition(
@@ -524,12 +1040,15 @@ public class SolverState
 
 
         // ==================================================
-        // X
+        // X AXIS
         // ==================================================
 
-        if (axis == RotationAxis.X)
+        if (
+            axis ==
+            RotationAxis.X
+        )
         {
-            if (direction > 0)
+            if (direction == 1)
             {
                 y =
                     -oldPosition.z;
@@ -549,12 +1068,15 @@ public class SolverState
 
 
         // ==================================================
-        // Y
+        // Y AXIS
         // ==================================================
 
-        else if (axis == RotationAxis.Y)
+        else if (
+            axis ==
+            RotationAxis.Y
+        )
         {
-            if (direction > 0)
+            if (direction == 1)
             {
                 x =
                     oldPosition.z;
@@ -574,12 +1096,15 @@ public class SolverState
 
 
         // ==================================================
-        // Z
+        // Z AXIS
         // ==================================================
 
-        else if (axis == RotationAxis.Z)
+        else if (
+            axis ==
+            RotationAxis.Z
+        )
         {
-            if (direction > 0)
+            if (direction == 1)
             {
                 x =
                     -oldPosition.y;
@@ -598,26 +1123,30 @@ public class SolverState
         }
 
 
-        return new Vector3Int(
-            x,
-            y,
-            z
-        );
+        return
+            new Vector3Int(
+                x,
+                y,
+                z
+            );
     }
 
 
     // ======================================================
-    // VALIDIERUNG
+    // VALIDATE SOLVER STATE
     // ======================================================
 
     public bool IsValid()
     {
+        // ==================================================
+        // COUNTS
+        // ==================================================
+
         if (corners.Count != 8)
         {
             Debug.LogError(
-                "SolverState: Falsche Corner-Anzahl: " +
-                corners.Count +
-                " statt 8."
+                "SolverState: Corner-Anzahl falsch: " +
+                corners.Count
             );
 
             return false;
@@ -627,9 +1156,8 @@ public class SolverState
         if (edges.Count != 12)
         {
             Debug.LogError(
-                "SolverState: Falsche Edge-Anzahl: " +
-                edges.Count +
-                " statt 12."
+                "SolverState: Edge-Anzahl falsch: " +
+                edges.Count
             );
 
             return false;
@@ -642,6 +1170,7 @@ public class SolverState
         HashSet<string> edgeIDs =
             new HashSet<string>();
 
+
         HashSet<Vector3Int> cornerPositions =
             new HashSet<Vector3Int>();
 
@@ -650,6 +1179,7 @@ public class SolverState
 
 
         int cornerOrientationSum = 0;
+
         int edgeOrientationSum = 0;
 
 
@@ -662,9 +1192,11 @@ public class SolverState
             in corners
         )
         {
-            if (string.IsNullOrEmpty(
-                corner.pieceID
-            ))
+            if (
+                string.IsNullOrEmpty(
+                    corner.pieceID
+                )
+            )
             {
                 Debug.LogError(
                     "SolverState: Corner ohne Piece-ID."
@@ -730,9 +1262,11 @@ public class SolverState
             in edges
         )
         {
-            if (string.IsNullOrEmpty(
-                edge.pieceID
-            ))
+            if (
+                string.IsNullOrEmpty(
+                    edge.pieceID
+                )
+            )
             {
                 Debug.LogError(
                     "SolverState: Edge ohne Piece-ID."
@@ -790,13 +1324,15 @@ public class SolverState
 
 
         // ==================================================
-        // ORIENTATION-INVARIANTEN
+        // ORIENTATION INVARIANTS
         // ==================================================
 
-        if (cornerOrientationSum % 3 != 0)
+        if (
+            cornerOrientationSum % 3 != 0
+        )
         {
             Debug.LogError(
-                "SolverState: Corner-Summe ungültig: " +
+                "SolverState: Corner-Summe nicht durch 3 teilbar: " +
                 cornerOrientationSum
             );
 
@@ -804,10 +1340,12 @@ public class SolverState
         }
 
 
-        if (edgeOrientationSum % 2 != 0)
+        if (
+            edgeOrientationSum % 2 != 0
+        )
         {
             Debug.LogError(
-                "SolverState: Edge-Summe ungültig: " +
+                "SolverState: Edge-Summe nicht durch 2 teilbar: " +
                 edgeOrientationSum
             );
 
@@ -820,15 +1358,27 @@ public class SolverState
 
 
     // ======================================================
-    // DEBUG
+    // PRINT
     // ======================================================
 
     public void Print()
     {
         Debug.Log(
-            "================ SOLVER STATE ================"
+            "========================================"
         );
 
+        Debug.Log(
+            "SOLVER STATE"
+        );
+
+        Debug.Log(
+            "========================================"
+        );
+
+
+        // ==================================================
+        // CORNERS
+        // ==================================================
 
         Debug.Log(
             "--- CORNERS ---"
@@ -845,6 +1395,10 @@ public class SolverState
             );
         }
 
+
+        // ==================================================
+        // EDGES
+        // ==================================================
 
         Debug.Log(
             "--- EDGES ---"
@@ -863,13 +1417,7 @@ public class SolverState
 
 
         Debug.Log(
-            "Valid: " +
-            IsValid()
-        );
-
-
-        Debug.Log(
-            "=============================================="
+            "========================================"
         );
     }
 }
