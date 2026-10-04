@@ -525,114 +525,258 @@ public class Cubie : MonoBehaviour
 
 
     // ==================================================
-    // ORIENTIERUNG AKTUALISIEREN
-    // ==================================================
+// ORIENTIERUNG AKTUALISIEREN
+// ==================================================
+//
+// Die Sticker-Richtungen sind die Quelle der Wahrheit.
+//
+// WICHTIG:
+// Diese Methode muss aufgerufen werden, NACHDEM
+// RotateStickers() ausgeführt wurde.
+// ==================================================
 
-    public void UpdateOrientation()
+public void UpdateOrientation()
+{
+    switch (Type)
     {
-        switch (Type)
+        case CubieType.Corner:
+            UpdateCornerOrientationFromStickers();
+            break;
+
+        case CubieType.Edge:
+            UpdateEdgeOrientationFromStickers();
+            break;
+
+        case CubieType.Center:
+            orientation = 0;
+            break;
+    }
+}
+
+
+// ==================================================
+// CORNER ORIENTATION AUS STICKERN
+// ==================================================
+//
+// Für jede Ecke suchen wir ihren ursprünglichen
+// U- oder D-Sticker.
+//
+// Liegt dieser aktuell auf:
+//
+// Y-Achse -> Orientation 0
+// X/Z     -> Orientation 1 oder 2
+//
+// Für die Unterscheidung zwischen 1 und 2 wird
+// berücksichtigt, ob es ursprünglich ein U- oder
+// D-Sticker war.
+//
+// Dadurch wird die Orientation vollständig aus dem
+// realen Stickerzustand rekonstruiert.
+// ==================================================
+
+private void UpdateCornerOrientationFromStickers()
+{
+    CubieSticker udSticker = null;
+
+    foreach (CubieSticker sticker in stickers)
+    {
+        if (
+            sticker.originalDirection ==
+                FaceDirection.PositiveY ||
+            sticker.originalDirection ==
+                FaceDirection.NegativeY
+        )
         {
-            case CubieType.Corner:
-                // Corner Orientation wird bereits
-                // während des Zuges inkrementell aktualisiert.
-                break;
+            udSticker = sticker;
+            break;
+        }
+    }
 
-            case CubieType.Edge:
-                // Edge Orientation wird jetzt ebenfalls
-                // während des Zuges inkrementell aktualisiert.
-                //
-                // Hier NICHT neu berechnen!
-                break;
+    if (udSticker == null)
+    {
+        Debug.LogError(
+            "Corner " +
+            pieceID +
+            " besitzt keinen U/D-Sticker."
+        );
 
-            case CubieType.Center:
-                orientation = 0;
-                break;
+        return;
+    }
+
+
+    // ------------------------------------------
+    // U/D-Sticker liegt wieder auf Y
+    // ------------------------------------------
+
+    if (
+        udSticker.currentDirection ==
+            FaceDirection.PositiveY ||
+        udSticker.currentDirection ==
+            FaceDirection.NegativeY
+    )
+    {
+        orientation = 0;
+        return;
+    }
+
+
+    bool isUCorner =
+        udSticker.originalDirection ==
+        FaceDirection.PositiveY;
+
+
+    // ------------------------------------------
+    // U/D-Sticker liegt auf X
+    // ------------------------------------------
+
+    if (
+        udSticker.currentDirection ==
+            FaceDirection.PositiveX ||
+        udSticker.currentDirection ==
+            FaceDirection.NegativeX
+    )
+    {
+        orientation =
+            isUCorner
+                ? 1
+                : 2;
+
+        return;
+    }
+
+
+    // ------------------------------------------
+    // U/D-Sticker liegt auf Z
+    // ------------------------------------------
+
+    if (
+        udSticker.currentDirection ==
+            FaceDirection.PositiveZ ||
+        udSticker.currentDirection ==
+            FaceDirection.NegativeZ
+    )
+    {
+        orientation =
+            isUCorner
+                ? 2
+                : 1;
+
+        return;
+    }
+
+
+    Debug.LogError(
+        "Corner Orientation konnte nicht bestimmt werden: " +
+        pieceID
+    );
+}
+
+
+// ==================================================
+// EDGE ORIENTATION AUS STICKERN
+// ==================================================
+//
+// Standardkonvention:
+//
+// Hat die Edge einen U/D-Sticker:
+//     U/D-Sticker auf Y -> 0
+//     sonst             -> 1
+//
+// Hat sie keinen U/D-Sticker:
+//     F/B-Sticker auf Z -> 0
+//     sonst             -> 1
+// ==================================================
+
+private void UpdateEdgeOrientationFromStickers()
+{
+    CubieSticker referenceSticker = null;
+
+
+    // ------------------------------------------
+    // Zuerst U/D-Sticker suchen
+    // ------------------------------------------
+
+    foreach (CubieSticker sticker in stickers)
+    {
+        if (
+            sticker.originalDirection ==
+                FaceDirection.PositiveY ||
+            sticker.originalDirection ==
+                FaceDirection.NegativeY
+        )
+        {
+            referenceSticker = sticker;
+            break;
         }
     }
 
 
-    // ==================================================
-    // CORNER ORIENTIERUNG
-    // ==================================================
-
-    public void UpdateCornerOrientation(
-        RotationAxis axis,
-        int direction,
-        Vector3Int oldPosition)
+    if (referenceSticker != null)
     {
-        if (Type != CubieType.Corner)
-            return;
-
-        // U und D verändern die Corner Orientation nicht.
-        if (axis == RotationAxis.Y)
-            return;
-
-        int delta = 0;
-
-        // R / L
-        if (axis == RotationAxis.X)
+        if (
+            referenceSticker.currentDirection ==
+                FaceDirection.PositiveY ||
+            referenceSticker.currentDirection ==
+                FaceDirection.NegativeY
+        )
         {
-            if (direction > 0) // R
-            {
-                delta = oldPosition.z > 0 ? 1 : 2;
-            }
-            else // L
-            {
-                delta = oldPosition.z > 0 ? 2 : 1;
-            }
+            orientation = 0;
+        }
+        else
+        {
+            orientation = 1;
         }
 
-        // F / B
-        else if (axis == RotationAxis.Z)
-        {
-            if (direction < 0) // F
-            {
-                delta = oldPosition.x > 0 ? 2 : 1;
-            }
-            else // B
-            {
-                delta = oldPosition.x > 0 ? 1 : 2;
-            }
-        }
-
-        orientation = (orientation + delta) % 3;
+        return;
     }
 
 
-    // ==================================================
-    // EDGE ORIENTIERUNG
-    // ==================================================
-    //
-    // Edge Orientation wird als eigenständiger logischer
-    // Zustand inkrementell gespeichert.
-    //
-    // Konvention:
-    //
-    // U / U' -> keine Änderung
-    // D / D' -> keine Änderung
-    // R / R' -> keine Änderung
-    // L / L' -> keine Änderung
-    //
-    // F / F' -> betroffene Edges flippen
-    // B / B' -> betroffene Edges flippen
-    //
-    // Da diese Methode nur für Cubies der aktuell
-    // gedrehten Ebene aufgerufen wird, reicht die
-    // Prüfung auf RotationAxis.Z.
-    // ==================================================
+    // ------------------------------------------
+    // Keine U/D-Edge:
+    // F/B-Sticker als Referenz benutzen
+    // ------------------------------------------
 
-    public void UpdateEdgeOrientation(
-        RotationAxis axis)
+    foreach (CubieSticker sticker in stickers)
     {
-        if (Type != CubieType.Edge)
-            return;
-
-        if (axis == RotationAxis.Z)
+        if (
+            sticker.originalDirection ==
+                FaceDirection.PositiveZ ||
+            sticker.originalDirection ==
+                FaceDirection.NegativeZ
+        )
         {
-            orientation = 1 - orientation;
+            referenceSticker = sticker;
+            break;
         }
     }
 
+
+    if (referenceSticker == null)
+    {
+        Debug.LogError(
+            "Edge " +
+            pieceID +
+            " besitzt keinen gültigen Referenz-Sticker."
+        );
+
+        return;
+    }
+
+
+    if (
+        referenceSticker.currentDirection ==
+            FaceDirection.PositiveZ ||
+        referenceSticker.currentDirection ==
+            FaceDirection.NegativeZ
+    )
+    {
+        orientation = 0;
+    }
+    else
+    {
+        orientation = 1;
+    }
+}
 
     // ==================================================
     // LOGISCHE POSITION AUF TRANSFORM ANWENDEN

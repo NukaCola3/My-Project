@@ -934,16 +934,6 @@ public class RubiksCube : MonoBehaviour
             // automatisch nur die vier betroffenen Edges.
             // ==================================================
 
-            cubie.UpdateCornerOrientation(
-                axis,
-                direction,
-                oldPosition
-            );
-
-            cubie.UpdateEdgeOrientation(
-                axis
-            );
-
 
             int x =
                 oldPosition.x;

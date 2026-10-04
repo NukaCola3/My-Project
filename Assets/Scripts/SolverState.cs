@@ -807,71 +807,30 @@ public class SolverState
             int delta = 0;
 
 
-            // ==============================================
-            // Y
-            // ==============================================
-            //
-            // U/D verändern die Corner Orientation nicht.
-            // ==============================================
-
-            if (
-                axis ==
-                RotationAxis.Y
-            )
+            // U / D
+            if (axis == RotationAxis.Y)
             {
                 delta = 0;
             }
 
 
-            // ==============================================
-            // X
-            // ==============================================
-
-            else if (
-                axis ==
-                RotationAxis.X
-            )
+            // R / L
+            else if (axis == RotationAxis.X)
             {
-                if (direction > 0)
-                {
-                    delta =
-                        oldPosition.z > 0
-                            ? 1
-                            : 2;
-                }
-                else
-                {
-                    delta =
-                        oldPosition.z > 0
-                            ? 2
-                            : 1;
-                }
+                delta =
+                oldPosition.z > 0
+                        ? 1
+                        : 2;
             }
 
 
-            // ==============================================
-            // Z
-            // ==============================================
-
-            else if (
-                axis ==
-                RotationAxis.Z
-            )
+            // F / B
+            else if (axis == RotationAxis.Z)
             {
-                if (direction < 0)
-                {
-                    delta =
-                        oldPosition.x > 0
-                            ? 2
-                            : 1;
-                }
-                else
-                {
-                    delta =
-                        oldPosition.x > 0
-                            ? 1
-                            : 2;
-                }
+                delta =
+                oldPosition.x > 0
+                ? 2
+                : 1;
             }
 
 

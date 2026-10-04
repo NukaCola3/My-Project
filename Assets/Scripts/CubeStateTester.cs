@@ -2679,4 +2679,921 @@ private bool AreSolverStatesEqual(
     return true;
 }
 
+// ======================================================
+// SOLVER STATE KEY / COMPARISON TEST
+// ======================================================
+
+[ContextMenu("Run State Key Test")]
+public void RunStateKeyTest()
+{
+    if (rubiksCube == null)
+    {
+        Debug.LogError(
+            "STATE KEY TEST: RubiksCube fehlt."
+        );
+
+        return;
+    }
+
+
+    if (rubiksCube.cubies == null)
+    {
+        Debug.LogError(
+            "STATE KEY TEST: Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START SOLVER STATE KEY TEST"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    // ==================================================
+    // 1. AUSGANGSZUSTAND
+    // ==================================================
+
+    SolverState original =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    if (!original.IsValid())
+    {
+        Debug.LogError(
+            "STATE KEY TEST: " +
+            "Originalzustand ist ungültig."
+        );
+
+        return;
+    }
+
+
+    string originalKey =
+        original.GetStateKey();
+
+
+    Debug.Log(
+        "Originalzustand gültig: OK"
+    );
+
+
+    // ==================================================
+    // 2. IDENTISCHER CLONE
+    // ==================================================
+
+    SolverState identicalClone =
+        original.Clone();
+
+
+    if (!original.IsSameState(
+        identicalClone
+    ))
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Identischer Clone wird von " +
+            "IsSameState() nicht als gleich erkannt."
+        );
+
+        return;
+    }
+
+
+    if (
+        originalKey !=
+        identicalClone.GetStateKey()
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Identischer Clone erzeugt " +
+            "einen anderen State Key."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "Identischer Clone: " +
+        "IsSameState + StateKey OK"
+    );
+
+
+    // ==================================================
+    // 3. R MUSS ZUSTAND VERÄNDERN
+    // ==================================================
+
+    SolverState movedState =
+        original.Clone();
+
+
+    if (!movedState.ApplyMove("R"))
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Move R konnte nicht ausgeführt werden."
+        );
+
+        return;
+    }
+
+
+    if (
+        original.IsSameState(
+            movedState
+        )
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Original und R-Zustand werden " +
+            "fälschlicherweise als gleich erkannt."
+        );
+
+        return;
+    }
+
+
+    if (
+        originalKey ==
+        movedState.GetStateKey()
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Original und R-Zustand besitzen " +
+            "denselben State Key."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "R verändert Zustand und Key: OK"
+    );
+
+
+    // ==================================================
+    // 4. R + R' MUSS ZUM ORIGINAL ZURÜCKKEHREN
+    // ==================================================
+
+    SolverState inverseTest =
+        original.Clone();
+
+
+    inverseTest.ApplyMove("R");
+
+    inverseTest.ApplyMove("R'");
+
+
+    if (!original.IsSameState(
+        inverseTest
+    ))
+        PrintSolverStateDifferences(
+        original,
+        inverseTest,
+        "R R'"
+    );
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R R' kehrt nicht zum " +
+            "Originalzustand zurück."
+        );
+
+        return;
+    }
+
+
+    if (
+        originalKey !=
+        inverseTest.GetStateKey()
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R R' erzeugt nicht wieder " +
+            "den ursprünglichen State Key."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "R R' -> Originalzustand: OK"
+    );
+
+
+    // ==================================================
+    // 5. VIER R-ZÜGE MÜSSEN ORIGINAL ERGEBEN
+    // ==================================================
+
+    SolverState fourTurns =
+        original.Clone();
+
+
+    fourTurns.ApplyMove("R");
+    fourTurns.ApplyMove("R");
+    fourTurns.ApplyMove("R");
+    fourTurns.ApplyMove("R");
+
+
+    if (!original.IsSameState(
+        fourTurns
+    ))
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R R R R kehrt nicht zum " +
+            "Originalzustand zurück."
+        );
+
+        return;
+    }
+
+
+    if (
+        originalKey !=
+        fourTurns.GetStateKey()
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R R R R erzeugt nicht den " +
+            "ursprünglichen State Key."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "R R R R -> Originalzustand: OK"
+    );
+
+
+    // ==================================================
+    // 6. R2 MUSS GLEICH R R SEIN
+    // ==================================================
+
+    SolverState doubleMoveA =
+        original.Clone();
+
+    SolverState doubleMoveB =
+        original.Clone();
+
+
+    doubleMoveA.ApplyMove("R2");
+
+
+    doubleMoveB.ApplyMove("R");
+    doubleMoveB.ApplyMove("R");
+
+
+    if (!doubleMoveA.IsSameState(
+        doubleMoveB
+    ))
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R2 und R R ergeben " +
+            "unterschiedliche Zustände."
+        );
+
+        return;
+    }
+
+
+    if (
+        doubleMoveA.GetStateKey() !=
+        doubleMoveB.GetStateKey()
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R2 und R R besitzen " +
+            "unterschiedliche State Keys."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "R2 == R R: OK"
+    );
+
+
+    // ==================================================
+    // 7. VERSCHIEDENE WEGE ZUM GLEICHEN ZUSTAND
+    //
+    // R U U' entspricht einfach R.
+    // ==================================================
+
+    SolverState pathA =
+        original.Clone();
+
+    SolverState pathB =
+        original.Clone();
+
+
+    pathA.ApplyMove("R");
+
+
+    pathB.ApplyMove("R");
+    pathB.ApplyMove("U");
+    pathB.ApplyMove("U'");
+
+
+    if (!pathA.IsSameState(
+        pathB
+    ))
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R und R U U' werden nicht " +
+            "als gleicher Zustand erkannt."
+        );
+
+        return;
+    }
+
+
+    if (
+        pathA.GetStateKey() !=
+        pathB.GetStateKey()
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "R und R U U' besitzen " +
+            "unterschiedliche State Keys."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "R == R U U': OK"
+    );
+
+
+    // ==================================================
+    // 8. HASHSET TEST
+    //
+    // Genau das werden wir später im Solver benutzen.
+    // ==================================================
+
+    HashSet<string> visitedStates =
+        new HashSet<string>();
+
+
+    bool firstInsert =
+        visitedStates.Add(
+            original.GetStateKey()
+        );
+
+
+    bool duplicateInsert =
+        visitedStates.Add(
+            identicalClone.GetStateKey()
+        );
+
+
+    bool changedInsert =
+        visitedStates.Add(
+            movedState.GetStateKey()
+        );
+
+
+    if (!firstInsert)
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Original konnte nicht in " +
+            "HashSet eingefügt werden."
+        );
+
+        return;
+    }
+
+
+    if (duplicateInsert)
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Identischer Zustand wurde im " +
+            "HashSet als neuer Zustand erkannt."
+        );
+
+        return;
+    }
+
+
+    if (!changedInsert)
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Veränderter Zustand wurde im " +
+            "HashSet nicht als neu erkannt."
+        );
+
+        return;
+    }
+
+
+    if (visitedStates.Count != 2)
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "HashSet sollte genau 2 " +
+            "verschiedene Zustände enthalten. " +
+            "Tatsächlich: " +
+            visitedStates.Count
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "HashSet erkennt doppelte Zustände: OK"
+    );
+
+
+    // ==================================================
+    // 9. ORIGINAL DARF NICHT VERÄNDERT WORDEN SEIN
+    // ==================================================
+
+    SolverState unityState =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    if (!original.IsSameState(
+        unityState
+    ))
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Unity-Zustand wurde während " +
+            "des Tests verändert."
+        );
+
+        return;
+    }
+
+
+    if (
+        originalKey !=
+        unityState.GetStateKey()
+    )
+    {
+        Debug.LogError(
+            "STATE KEY TEST FEHLER: " +
+            "Unity-Zustand besitzt nach dem " +
+            "Test einen anderen Key."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "Unity-Würfel blieb unverändert: OK"
+    );
+
+
+    // ==================================================
+    // ALLES BESTANDEN
+    // ==================================================
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "SOLVER STATE KEY TEST BESTANDEN"
+    );
+
+    Debug.Log(
+        "IsSameState(): OK"
+    );
+
+    Debug.Log(
+        "GetStateKey(): OK"
+    );
+
+    Debug.Log(
+        "HashSet-Erkennung: OK"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+}
+private void PrintSolverStateDifferences(
+    SolverState expected,
+    SolverState actual,
+    string context)
+{
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.LogError(
+        "STATE DIFFERENCES: " +
+        context
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    // ==================================================
+    // CORNERS
+    // ==================================================
+
+    foreach (
+        SolverPieceState expectedPiece
+        in expected.corners
+    )
+    {
+        foreach (
+            SolverPieceState actualPiece
+            in actual.corners
+        )
+        {
+            if (
+                expectedPiece.pieceID !=
+                actualPiece.pieceID
+            )
+            {
+                continue;
+            }
+
+
+            if (
+                expectedPiece.position !=
+                    actualPiece.position ||
+                expectedPiece.orientation !=
+                    actualPiece.orientation
+            )
+            {
+                Debug.LogError(
+                    "CORNER " +
+                    expectedPiece.pieceID +
+                    "\nExpected Position: " +
+                    expectedPiece.position +
+                    "\nActual Position: " +
+                    actualPiece.position +
+                    "\nExpected Orientation: " +
+                    expectedPiece.orientation +
+                    "\nActual Orientation: " +
+                    actualPiece.orientation
+                );
+            }
+
+
+            break;
+        }
+    }
+
+
+    // ==================================================
+    // EDGES
+    // ==================================================
+
+    foreach (
+        SolverPieceState expectedPiece
+        in expected.edges
+    )
+    {
+        foreach (
+            SolverPieceState actualPiece
+            in actual.edges
+        )
+        {
+            if (
+                expectedPiece.pieceID !=
+                actualPiece.pieceID
+            )
+            {
+                continue;
+            }
+
+
+            if (
+                expectedPiece.position !=
+                    actualPiece.position ||
+                expectedPiece.orientation !=
+                    actualPiece.orientation
+            )
+            {
+                Debug.LogError(
+                    "EDGE " +
+                    expectedPiece.pieceID +
+                    "\nExpected Position: " +
+                    expectedPiece.position +
+                    "\nActual Position: " +
+                    actualPiece.position +
+                    "\nExpected Orientation: " +
+                    expectedPiece.orientation +
+                    "\nActual Orientation: " +
+                    actualPiece.orientation
+                );
+            }
+
+
+            break;
+        }
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+}
+// ======================================================
+// UNITY INVERSE MOVE TEST
+// ======================================================
+//
+// Prüft direkt am echten Unity-Würfel:
+//
+// R  R'
+// R' R
+// L  L'
+// L' L
+// U  U'
+// U' U
+// D  D'
+// D' D
+// F  F'
+// F' F
+// B  B'
+// B' B
+//
+// Nach jedem Zugpaar muss der komplette logische Zustand
+// exakt dem Zustand VOR dem Zugpaar entsprechen.
+// ======================================================
+
+[ContextMenu("Run Unity Inverse Test")]
+public void RunUnityInverseTest()
+{
+    if (rubiksCube == null)
+    {
+        Debug.LogError(
+            "UNITY INVERSE TEST: RubiksCube fehlt."
+        );
+
+        return;
+    }
+
+
+    StartCoroutine(
+        RunUnityInverseTestCoroutine()
+    );
+}
+
+
+// ======================================================
+// UNITY INVERSE TEST COROUTINE
+// ======================================================
+
+private IEnumerator RunUnityInverseTestCoroutine()
+{
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START UNITY INVERSE TEST"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    string[][] inverseTests =
+    {
+        new string[] { "R",  "R'" },
+        new string[] { "R'", "R"  },
+
+        new string[] { "L",  "L'" },
+        new string[] { "L'", "L"  },
+
+        new string[] { "U",  "U'" },
+        new string[] { "U'", "U"  },
+
+        new string[] { "D",  "D'" },
+        new string[] { "D'", "D"  },
+
+        new string[] { "F",  "F'" },
+        new string[] { "F'", "F"  },
+
+        new string[] { "B",  "B'" },
+        new string[] { "B'", "B"  }
+    };
+
+
+    int passedTests = 0;
+
+
+    foreach (
+        string[] test
+        in inverseTests
+    )
+    {
+        string firstMove =
+            test[0];
+
+        string secondMove =
+            test[1];
+
+        string sequence =
+            firstMove +
+            " " +
+            secondMove;
+
+
+        Debug.Log(
+            "----------------------------------------"
+        );
+
+        Debug.Log(
+            "Teste: " +
+            sequence
+        );
+
+
+        // ==============================================
+        // ZUSTAND VOR DEM TEST SPEICHERN
+        // ==============================================
+
+        SolverState before =
+            new SolverState(
+                rubiksCube.cubies
+            );
+
+
+        if (!before.IsValid())
+        {
+            Debug.LogError(
+                "UNITY INVERSE TEST: " +
+                "Ausgangszustand vor " +
+                sequence +
+                " ist ungültig."
+            );
+
+            yield break;
+        }
+
+
+        // ==============================================
+        // ERSTEN ZUG AM ECHTEN UNITY-WÜRFEL AUSFÜHREN
+        // ==============================================
+
+        yield return StartCoroutine(
+            ExecuteAndWait(
+                firstMove
+            )
+        );
+
+
+        // ==============================================
+        // ZWEITEN ZUG AUSFÜHREN
+        // ==============================================
+
+        yield return StartCoroutine(
+            ExecuteAndWait(
+                secondMove
+            )
+        );
+
+
+        // ==============================================
+        // NEUEN UNITY-ZUSTAND EINLESEN
+        // ==============================================
+
+        SolverState after =
+            new SolverState(
+                rubiksCube.cubies
+            );
+
+
+        // ==============================================
+        // NORMALE VALIDIERUNG
+        // ==============================================
+
+        if (!after.IsValid())
+        {
+            Debug.LogError(
+                "UNITY INVERSE TEST FEHLER: " +
+                sequence +
+                " erzeugt einen ungültigen Zustand."
+            );
+
+            yield break;
+        }
+
+
+        // ==============================================
+        // EXAKTER VERGLEICH
+        // ==============================================
+
+        if (!before.IsSameState(
+            after
+        ))
+        {
+            Debug.LogError(
+                "UNITY INVERSE TEST FEHLER: " +
+                sequence +
+                " kehrt nicht exakt zum " +
+                "Ausgangszustand zurück."
+            );
+
+
+            PrintSolverStateDifferences(
+                before,
+                after,
+                sequence
+            );
+
+
+            yield break;
+        }
+
+
+        // ==============================================
+        // STATE KEY MUSS EBENFALLS IDENTISCH SEIN
+        // ==============================================
+
+        if (
+            before.GetStateKey() !=
+            after.GetStateKey()
+        )
+        {
+            Debug.LogError(
+                "UNITY INVERSE TEST FEHLER: " +
+                sequence +
+                " besitzt nach Rückkehr einen " +
+                "anderen State Key."
+            );
+
+            yield break;
+        }
+
+
+        passedTests++;
+
+
+        Debug.Log(
+            sequence +
+            " -> OK"
+        );
+    }
+
+
+    // ==================================================
+    // ALLE TESTS BESTANDEN
+    // ==================================================
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "UNITY INVERSE TEST BESTANDEN"
+    );
+
+    Debug.Log(
+        passedTests +
+        " / " +
+        inverseTests.Length +
+        " Zugpaare korrekt."
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+}
 }
