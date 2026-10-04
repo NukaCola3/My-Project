@@ -2,21 +2,43 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
+// ==========================================================
+// CUBE STATE TESTER
+// ==========================================================
+//
+// Testet:
+//
+// 1. Corner-/Edge-Orientation
+// 2. Solver-State-Struktur
+// 3. Kopieren Unity -> SolverState
+// 4. SolverState-Move-Simulation
+//
+// Beim Paralleltest gilt:
+//
+// Unity führt einen Move aus.
+// SolverState führt denselben Move unabhängig aus.
+// Danach werden beide Zustände verglichen.
+//
+// Der SolverState wird NICHT nach jedem Move neu aus Unity
+// erzeugt.
+// ==========================================================
+
 public class CubeStateTester : MonoBehaviour
 {
-    [Header("Referenz")]
+    // ======================================================
+    // REFERENCES
+    // ======================================================
+
     public RubiksCube rubiksCube;
 
-    [Header("Test")]
-    public float delayBetweenMoves = 0.15f;
-    public bool stopOnFirstFailure = true;
-    public bool printAllEdgesOnFailure = true;
-    public bool printSolverStateOnFailure = true;
 
-    [Tooltip(
-        "Jede Sequenz sollte am Ende wieder zum Ausgangszustand zurückführen. " +
-        "Geprüft wird trotzdem nach JEDEM einzelnen Zug."
-    )]
+    // ======================================================
+    // TEST SETTINGS
+    // ======================================================
+
+    [Header("Structured Tests")]
+
     public string[] testSequences =
     {
         "R R'",
@@ -39,322 +61,712 @@ public class CubeStateTester : MonoBehaviour
     };
 
 
-    private int totalMoves = 0;
-    private int totalChecks = 0;
-    private int failedChecks = 0;
+    [Header("Timing")]
+
+    public float waitAfterMove = 0.1f;
 
 
-    // ==================================================
-    // ERLAUBTE SOLVER-POSITIONEN
-    // ==================================================
+    // ======================================================
+    // SOLVER TEST STATE
+    // ======================================================
 
-    private readonly HashSet<Vector3Int> validCornerPositions =
-        new HashSet<Vector3Int>()
-        {
-            new Vector3Int( 1,  1,  1),
-            new Vector3Int( 1,  1, -1),
-            new Vector3Int(-1,  1,  1),
-            new Vector3Int(-1,  1, -1),
-
-            new Vector3Int( 1, -1,  1),
-            new Vector3Int( 1, -1, -1),
-            new Vector3Int(-1, -1,  1),
-            new Vector3Int(-1, -1, -1)
-        };
+    private SolverState simulatedSolverState;
 
 
-    private readonly HashSet<Vector3Int> validEdgePositions =
-        new HashSet<Vector3Int>()
-        {
-            // U
-            new Vector3Int( 0,  1,  1),
-            new Vector3Int( 1,  1,  0),
-            new Vector3Int( 0,  1, -1),
-            new Vector3Int(-1,  1,  0),
+    // ======================================================
+    // VALID POSITIONS
+    // ======================================================
 
-            // D
-            new Vector3Int( 0, -1,  1),
-            new Vector3Int( 1, -1,  0),
-            new Vector3Int( 0, -1, -1),
-            new Vector3Int(-1, -1,  0),
+    private readonly HashSet<Vector3Int>
+        validCornerPositions =
+            new HashSet<Vector3Int>()
+            {
+                new Vector3Int( 1,  1,  1),
+                new Vector3Int( 1,  1, -1),
+                new Vector3Int(-1,  1,  1),
+                new Vector3Int(-1,  1, -1),
 
-            // MITTLERE EBENE
-            new Vector3Int( 1,  0,  1),
-            new Vector3Int(-1,  0,  1),
-            new Vector3Int( 1,  0, -1),
-            new Vector3Int(-1,  0, -1)
-        };
+                new Vector3Int( 1, -1,  1),
+                new Vector3Int( 1, -1, -1),
+                new Vector3Int(-1, -1,  1),
+                new Vector3Int(-1, -1, -1)
+            };
 
 
-    // ==================================================
-    // START
-    // ==================================================
+    private readonly HashSet<Vector3Int>
+        validEdgePositions =
+            new HashSet<Vector3Int>()
+            {
+                // U
+                new Vector3Int( 0,  1,  1),
+                new Vector3Int( 1,  1,  0),
+                new Vector3Int( 0,  1, -1),
+                new Vector3Int(-1,  1,  0),
 
-    private void Start()
+                // D
+                new Vector3Int( 0, -1,  1),
+                new Vector3Int( 1, -1,  0),
+                new Vector3Int( 0, -1, -1),
+                new Vector3Int(-1, -1,  0),
+
+                // Middle
+                new Vector3Int( 1,  0,  1),
+                new Vector3Int(-1,  0,  1),
+                new Vector3Int( 1,  0, -1),
+                new Vector3Int(-1,  0, -1)
+            };
+
+
+    // ======================================================
+    // START STRUCTURED TESTS
+    // ======================================================
+
+    [ContextMenu("Run Structured Tests")]
+    public void RunStructuredTests()
     {
         if (rubiksCube == null)
         {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
-        if (rubiksCube == null)
-        {
             Debug.LogError(
-                "CubeStateTester: Kein RubiksCube gefunden!"
+                "CubeStateTester: RubiksCube fehlt."
             );
 
             return;
         }
 
+
+        if (rubiksCube.cubies == null)
+        {
+            Debug.LogError(
+                "CubeStateTester: Cubie-Liste fehlt."
+            );
+
+            return;
+        }
+
+
+        StopAllCoroutines();
+
         StartCoroutine(
-            RunStructuredTests()
+            RunStructuredTestsCoroutine()
         );
     }
 
 
-    // ==================================================
-    // HAUPTTEST
-    // ==================================================
+    // ======================================================
+    // STRUCTURED TEST COROUTINE
+    // ======================================================
 
-    private IEnumerator RunStructuredTests()
+    private IEnumerator RunStructuredTestsCoroutine()
     {
-        Debug.Log("");
         Debug.Log(
-            "============================================================"
+            "========================================"
         );
+
         Debug.Log(
-            "       CUBE STATE - SOLVER STATE TEST"
+            "START SOLVER PARALLELTEST"
         );
+
         Debug.Log(
-            "============================================================"
+            "========================================"
         );
 
 
-        // --------------------------------------------------
-        // STARTZUSTAND
-        // --------------------------------------------------
+        // ==================================================
+        // SolverState wird genau EINMAL aus Unity erzeugt.
+        //
+        // Danach wird er ausschließlich durch seine eigene
+        // ApplyMove()-Methode verändert.
+        // ==================================================
 
-        if (!ValidateState(
-            "START / SOLVED",
-            "<keine Züge>"
-        ))
+        simulatedSolverState =
+            new SolverState(
+                rubiksCube.cubies
+            );
+
+
+        if (!simulatedSolverState.IsValid())
         {
+            Debug.LogError(
+                "Initialer SolverState ist ungültig."
+            );
+
             yield break;
         }
 
 
-        // --------------------------------------------------
+        // Ausgangszustand vergleichen
+        if (!CompareUnityWithSimulatedSolver(
+            "START"
+        ))
+        {
+            Debug.LogError(
+                "Ausgangszustand stimmt nicht überein."
+            );
+
+            yield break;
+        }
+
+
+        int totalMoveCount = 0;
+
+
+        // ==================================================
         // TESTSEQUENZEN
-        // --------------------------------------------------
+        // ==================================================
 
         for (
-            int testIndex = 0;
-            testIndex < testSequences.Length;
-            testIndex++
+            int sequenceIndex = 0;
+            sequenceIndex < testSequences.Length;
+            sequenceIndex++
         )
         {
             string sequence =
-                testSequences[testIndex];
+                testSequences[sequenceIndex];
 
-            if (string.IsNullOrWhiteSpace(sequence))
+
+            if (string.IsNullOrWhiteSpace(
+                sequence
+            ))
             {
                 continue;
             }
 
 
-            Debug.Log("");
             Debug.Log(
-                "############################################################"
-            );
-            Debug.Log(
-                $"# TEST {testIndex + 1}: {sequence}"
-            );
-            Debug.Log(
-                "############################################################"
+                "----------------------------------------"
             );
 
+            Debug.Log(
+                "TEST " +
+                (sequenceIndex + 1) +
+                "/" +
+                testSequences.Length +
+                ": " +
+                sequence
+            );
 
-            List<MoveDefinition> moves =
-                ParseSequence(sequence);
 
-            List<string> executedMoves =
-                new List<string>();
-
-
-            if (moves.Count == 0)
-            {
-                Debug.LogWarning(
-                    $"TEST {testIndex + 1}: Keine gültigen Züge gefunden."
+            string[] moves =
+                sequence.Split(
+                    ' ',
+                    System.StringSplitOptions
+                        .RemoveEmptyEntries
                 );
 
-                continue;
-            }
 
-
-            // --------------------------------------------------
-            // EINZELNE ZÜGE
-            // --------------------------------------------------
+            // ==============================================
+            // MOVES DER SEQUENZ
+            // ==============================================
 
             for (
                 int moveIndex = 0;
-                moveIndex < moves.Count;
+                moveIndex < moves.Length;
                 moveIndex++
             )
             {
-                MoveDefinition move =
+                string move =
                     moves[moveIndex];
 
 
-                yield return ExecuteAndWait(
-                    move.axis,
-                    move.layer,
-                    move.direction,
-                    move.name
+                totalMoveCount++;
+
+
+                Debug.Log(
+                    "Move " +
+                    (moveIndex + 1) +
+                    "/" +
+                    moves.Length +
+                    ": " +
+                    move
                 );
 
 
-                totalMoves++;
+                // ==========================================
+                // 1. UNITY FÜHRT MOVE AUS
+                // ==========================================
 
-                executedMoves.Add(
-                    move.name
-                );
-
-
-                string executedSequence =
-                    string.Join(
-                        " ",
-                        executedMoves
-                    );
+                yield return
+                    ExecuteAndWait(move);
 
 
-                string label =
-                    $"TEST {testIndex + 1} | " +
-                    $"STEP {moveIndex + 1}/{moves.Count} | " +
-                    $"{move.name}";
+                // ==========================================
+                // 2. SOLVER FÜHRT DENSELBEN MOVE AUS
+                // ==========================================
+
+                bool solverMoveExecuted =
+                    simulatedSolverState
+                        .ApplyMove(move);
 
 
-                bool valid =
-                    ValidateState(
-                        label,
-                        executedSequence
-                    );
-
-
-                if (
-                    !valid &&
-                    stopOnFirstFailure
-                )
+                if (!solverMoveExecuted)
                 {
-                    Debug.LogError("");
-
                     Debug.LogError(
-                        "============================================================"
-                    );
-
-                    Debug.LogError(
-                        "TEST ABGEBROCHEN - ERSTER FEHLER GEFUNDEN"
-                    );
-
-                    Debug.LogError(
-                        $"Test: {testIndex + 1}"
-                    );
-
-                    Debug.LogError(
-                        $"Geplante Sequenz: {sequence}"
-                    );
-
-                    Debug.LogError(
-                        $"Sequenz bis Fehler: {executedSequence}"
-                    );
-
-                    Debug.LogError(
-                        $"Fehler trat nach Zug '{move.name}' auf."
-                    );
-
-                    Debug.LogError(
-                        "============================================================"
+                        "SolverState konnte Move nicht " +
+                        "ausführen: " +
+                        move
                     );
 
                     yield break;
                 }
 
 
-                if (delayBetweenMoves > 0f)
+                // ==========================================
+                // 3. UNITY INTERN VALIDIEREN
+                // ==========================================
+
+                bool unityStateValid =
+                    ValidateState();
+
+
+                if (!unityStateValid)
                 {
-                    yield return new WaitForSeconds(
-                        delayBetweenMoves
+                    Debug.LogError(
+                        "UNITY-STATE FEHLER"
                     );
+
+                    Debug.LogError(
+                        "Sequenz: " +
+                        sequence
+                    );
+
+                    Debug.LogError(
+                        "Move: " +
+                        move
+                    );
+
+                    Debug.LogError(
+                        "Move-Index: " +
+                        moveIndex
+                    );
+
+                    yield break;
                 }
+
+
+                // ==========================================
+                // 4. SOLVER INTERN VALIDIEREN
+                // ==========================================
+
+                if (!simulatedSolverState.IsValid())
+                {
+                    Debug.LogError(
+                        "SIMULIERTER SOLVERSTATE UNGÜLTIG"
+                    );
+
+                    Debug.LogError(
+                        "Sequenz: " +
+                        sequence
+                    );
+
+                    Debug.LogError(
+                        "Move: " +
+                        move
+                    );
+
+                    Debug.LogError(
+                        "Move-Index: " +
+                        moveIndex
+                    );
+
+                    simulatedSolverState.Print();
+
+                    yield break;
+                }
+
+
+                // ==========================================
+                // 5. UNITY UND SOLVER VERGLEICHEN
+                // ==========================================
+
+                string context =
+                    "Sequenz=\"" +
+                    sequence +
+                    "\" | Move=" +
+                    move +
+                    " | Schritt=" +
+                    (moveIndex + 1);
+
+
+                bool statesEqual =
+                    CompareUnityWithSimulatedSolver(
+                        context
+                    );
+
+
+                if (!statesEqual)
+                {
+                    Debug.LogError(
+                        "PARALLELTEST FEHLGESCHLAGEN"
+                    );
+
+                    Debug.LogError(
+                        context
+                    );
+
+                    yield break;
+                }
+
+
+                Debug.Log(
+                    "PARALLELTEST OK: " +
+                    context
+                );
             }
 
 
             Debug.Log(
-                $"TEST {testIndex + 1} beendet: {sequence}"
+                "TEST BESTANDEN: " +
+                sequence
             );
         }
 
 
-        // --------------------------------------------------
-        // ENDERGEBNIS
-        // --------------------------------------------------
+        // ==================================================
+        // ALLES BESTANDEN
+        // ==================================================
 
-        Debug.Log("");
         Debug.Log(
-            "============================================================"
+            "========================================"
         );
 
         Debug.Log(
-            "                 TESTLAUF BEENDET"
+            "SOLVER-PARALLELTEST: " +
+            "ALLE PRÜFUNGEN BESTANDEN"
         );
 
         Debug.Log(
-            $"Ausgeführte Züge: {totalMoves}"
+            "Getestete Moves insgesamt: " +
+            totalMoveCount
         );
 
         Debug.Log(
-            $"Prüfungen: {totalChecks}"
+            "Unity und SolverState sind nach jedem " +
+            "getesteten Move identisch."
         );
 
         Debug.Log(
-            $"Fehlerhafte Prüfungen: {failedChecks}"
+            "========================================"
         );
-
-        Debug.Log(
-            "============================================================"
-        );
-
-
-        if (failedChecks == 0)
-        {
-            Debug.Log(
-                "SOLVER-STATE TEST: ALLE PRÜFUNGEN BESTANDEN"
-            );
-        }
     }
 
 
-    // ==================================================
-    // KOMPLETTEN STATE PRÜFEN
-    // ==================================================
+    // ======================================================
+    // UNITY <-> SIMULIERTER SOLVER VERGLEICH
+    // ======================================================
 
-    private bool ValidateState(
-        string label,
-        string executedSequence)
+    private bool CompareUnityWithSimulatedSolver(
+        string context)
     {
-        totalChecks++;
+        if (simulatedSolverState == null)
+        {
+            Debug.LogError(
+                "Simulierter SolverState ist null."
+            );
+
+            return false;
+        }
 
 
+        // ==================================================
+        // CORNERS
+        // ==================================================
+
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
+        {
+            if (
+                cubie == null ||
+                cubie.Type != CubieType.Corner
+            )
+            {
+                continue;
+            }
+
+
+            bool found = false;
+
+
+            foreach (
+                SolverPieceState solverCorner
+                in simulatedSolverState.corners
+            )
+            {
+                if (
+                    solverCorner.pieceID !=
+                    cubie.pieceID
+                )
+                {
+                    continue;
+                }
+
+
+                found = true;
+
+
+                // ==========================================
+                // POSITION
+                // ==========================================
+
+                if (
+                    solverCorner.position !=
+                    cubie.logicalPosition
+                )
+                {
+                    Debug.LogError(
+                        "CORNER POSITION UNTERSCHIED"
+                    );
+
+                    Debug.LogError(
+                        "Context: " +
+                        context
+                    );
+
+                    Debug.LogError(
+                        "Piece: " +
+                        cubie.pieceID
+                    );
+
+                    Debug.LogError(
+                        "Unity Position: " +
+                        cubie.logicalPosition
+                    );
+
+                    Debug.LogError(
+                        "Solver Position: " +
+                        solverCorner.position
+                    );
+
+                    return false;
+                }
+
+
+                // ==========================================
+                // ORIENTATION
+                // ==========================================
+
+                if (
+                    solverCorner.orientation !=
+                    cubie.orientation
+                )
+                {
+                    Debug.LogError(
+                        "CORNER ORIENTATION UNTERSCHIED"
+                    );
+
+                    Debug.LogError(
+                        "Context: " +
+                        context
+                    );
+
+                    Debug.LogError(
+                        "Piece: " +
+                        cubie.pieceID
+                    );
+
+                    Debug.LogError(
+                        "Unity Orientation: " +
+                        cubie.orientation
+                    );
+
+                    Debug.LogError(
+                        "Solver Orientation: " +
+                        solverCorner.orientation
+                    );
+
+                    return false;
+                }
+
+
+                break;
+            }
+
+
+            if (!found)
+            {
+                Debug.LogError(
+                    "CORNER FEHLT IM SOLVERSTATE"
+                );
+
+                Debug.LogError(
+                    "Context: " +
+                    context
+                );
+
+                Debug.LogError(
+                    "Piece: " +
+                    cubie.pieceID
+                );
+
+                return false;
+            }
+        }
+
+
+        // ==================================================
+        // EDGES
+        // ==================================================
+
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
+        {
+            if (
+                cubie == null ||
+                cubie.Type != CubieType.Edge
+            )
+            {
+                continue;
+            }
+
+
+            bool found = false;
+
+
+            foreach (
+                SolverPieceState solverEdge
+                in simulatedSolverState.edges
+            )
+            {
+                if (
+                    solverEdge.pieceID !=
+                    cubie.pieceID
+                )
+                {
+                    continue;
+                }
+
+
+                found = true;
+
+
+                // ==========================================
+                // POSITION
+                // ==========================================
+
+                if (
+                    solverEdge.position !=
+                    cubie.logicalPosition
+                )
+                {
+                    Debug.LogError(
+                        "EDGE POSITION UNTERSCHIED"
+                    );
+
+                    Debug.LogError(
+                        "Context: " +
+                        context
+                    );
+
+                    Debug.LogError(
+                        "Piece: " +
+                        cubie.pieceID
+                    );
+
+                    Debug.LogError(
+                        "Unity Position: " +
+                        cubie.logicalPosition
+                    );
+
+                    Debug.LogError(
+                        "Solver Position: " +
+                        solverEdge.position
+                    );
+
+                    return false;
+                }
+
+
+                // ==========================================
+                // ORIENTATION
+                // ==========================================
+
+                if (
+                    solverEdge.orientation !=
+                    cubie.orientation
+                )
+                {
+                    Debug.LogError(
+                        "EDGE ORIENTATION UNTERSCHIED"
+                    );
+
+                    Debug.LogError(
+                        "Context: " +
+                        context
+                    );
+
+                    Debug.LogError(
+                        "Piece: " +
+                        cubie.pieceID
+                    );
+
+                    Debug.LogError(
+                        "Unity Orientation: " +
+                        cubie.orientation
+                    );
+
+                    Debug.LogError(
+                        "Solver Orientation: " +
+                        solverEdge.orientation
+                    );
+
+                    return false;
+                }
+
+
+                break;
+            }
+
+
+            if (!found)
+            {
+                Debug.LogError(
+                    "EDGE FEHLT IM SOLVERSTATE"
+                );
+
+                Debug.LogError(
+                    "Context: " +
+                    context
+                );
+
+                Debug.LogError(
+                    "Piece: " +
+                    cubie.pieceID
+                );
+
+                return false;
+            }
+        }
+
+
+        return true;
+    }
+
+
+    // ======================================================
+    // COMPLETE UNITY STATE VALIDATION
+    // ======================================================
+
+    private bool ValidateState()
+    {
         bool orientationValid =
             ValidateOrientationInternal();
+
 
         bool solverStateValid =
             ValidateSolverStateInternal();
 
 
+        bool solverCopyValid =
+            ValidateSolverStateCopy();
+
+
         bool valid =
             orientationValid &&
-            solverStateValid;
+            solverStateValid &&
+            solverCopyValid;
 
 
         string status =
@@ -364,63 +776,33 @@ public class CubeStateTester : MonoBehaviour
 
 
         Debug.Log(
-            $"[{status}] {label}"
+            "CubeStateTester: " +
+            status
         );
 
 
-        if (!valid)
+        if (!orientationValid)
         {
-            failedChecks++;
-
-
             Debug.LogError(
-                "---------------- STATE FEHLER ----------------"
+                "Orientation-Prüfung fehlgeschlagen."
             );
+        }
 
+
+        if (!solverStateValid)
+        {
             Debug.LogError(
-                $"Sequenz bis hier: {executedSequence}"
+                "Solver-State-Strukturprüfung " +
+                "fehlgeschlagen."
             );
+        }
 
 
-            if (!orientationValid)
-            {
-                Debug.LogError(
-                    "Orientation-State ist ungültig."
-                );
-            }
-
-
-            if (!solverStateValid)
-            {
-                Debug.LogError(
-                    "Solver-State ist ungültig."
-                );
-            }
-
-
-            if (printAllEdgesOnFailure)
-            {
-                PrintEdgeState(
-                    "FEHLER NACH: " +
-                    executedSequence
-                );
-            }
-
-
-            PrintCornerSummary();
-
-
-            if (printSolverStateOnFailure)
-            {
-                PrintSolverState(
-                    "FEHLER NACH: " +
-                    executedSequence
-                );
-            }
-
-
+        if (!solverCopyValid)
+        {
             Debug.LogError(
-                "------------------------------------------------"
+                "Cubie-State und SolverState " +
+                "stimmen nicht überein."
             );
         }
 
@@ -429,39 +811,34 @@ public class CubeStateTester : MonoBehaviour
     }
 
 
-    // ==================================================
-    // ORIENTATION PRÜFEN
-    // ==================================================
+    // ======================================================
+    // ORIENTATION VALIDATION
+    // ======================================================
 
     private bool ValidateOrientationInternal()
     {
-        int cornerSum = 0;
-        int edgeSum = 0;
-
         int cornerCount = 0;
         int edgeCount = 0;
 
-        bool valueRangeValid = true;
+        int cornerOrientationSum = 0;
+        int edgeOrientationSum = 0;
 
 
-        foreach (Cubie cubie in rubiksCube.cubies)
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
         {
             if (cubie == null)
-            {
                 continue;
-            }
 
 
-            // --------------------------------------------------
-            // CORNER
-            // --------------------------------------------------
-
-            if (cubie.Type == CubieType.Corner)
+            if (
+                cubie.Type ==
+                CubieType.Corner
+            )
             {
                 cornerCount++;
-
-                cornerSum +=
-                    cubie.orientation;
 
 
                 if (
@@ -469,26 +846,28 @@ public class CubeStateTester : MonoBehaviour
                     cubie.orientation > 2
                 )
                 {
-                    valueRangeValid = false;
-
                     Debug.LogError(
-                        $"Ungültige Corner-Orientation: " +
-                        $"{cubie.pieceID} = {cubie.orientation}"
+                        "Ungültige Corner-Orientation: " +
+                        cubie.pieceID +
+                        " = " +
+                        cubie.orientation
                     );
+
+                    return false;
                 }
+
+
+                cornerOrientationSum +=
+                    cubie.orientation;
             }
 
 
-            // --------------------------------------------------
-            // EDGE
-            // --------------------------------------------------
-
-            else if (cubie.Type == CubieType.Edge)
+            else if (
+                cubie.Type ==
+                CubieType.Edge
+            )
             {
                 edgeCount++;
-
-                edgeSum +=
-                    cubie.orientation;
 
 
                 if (
@@ -496,95 +875,140 @@ public class CubeStateTester : MonoBehaviour
                     cubie.orientation > 1
                 )
                 {
-                    valueRangeValid = false;
-
                     Debug.LogError(
-                        $"Ungültige Edge-Orientation: " +
-                        $"{cubie.pieceID} = {cubie.orientation}"
+                        "Ungültige Edge-Orientation: " +
+                        cubie.pieceID +
+                        " = " +
+                        cubie.orientation
                     );
+
+                    return false;
                 }
+
+
+                edgeOrientationSum +=
+                    cubie.orientation;
             }
         }
 
 
-        bool cornerCountValid =
-            cornerCount == 8;
-
-        bool edgeCountValid =
-            edgeCount == 12;
-
-        bool cornerSumValid =
-            cornerSum % 3 == 0;
-
-        bool edgeSumValid =
-            edgeSum % 2 == 0;
-
-
-        bool valid =
-            cornerCountValid &&
-            edgeCountValid &&
-            cornerSumValid &&
-            edgeSumValid &&
-            valueRangeValid;
-
-
-        Debug.Log(
-            $"Orientation | " +
-            $"Corners: {cornerSum} " +
-            $"(mod 3 = {cornerSum % 3}) | " +
-            $"Edges: {edgeSum} " +
-            $"(mod 2 = {edgeSum % 2}) | " +
-            $"Counts C/E: {cornerCount}/{edgeCount}"
-        );
-
-
-        if (!cornerCountValid)
+        if (cornerCount != 8)
         {
             Debug.LogError(
-                $"Corner-Anzahl falsch: " +
-                $"{cornerCount} statt 8"
+                "Corner-Anzahl falsch: " +
+                cornerCount
             );
+
+            return false;
         }
 
 
-        if (!edgeCountValid)
+        if (edgeCount != 12)
         {
             Debug.LogError(
-                $"Edge-Anzahl falsch: " +
-                $"{edgeCount} statt 12"
+                "Edge-Anzahl falsch: " +
+                edgeCount
             );
+
+            return false;
         }
 
 
-        if (!cornerSumValid)
+        if (
+            cornerOrientationSum % 3 != 0
+        )
         {
             Debug.LogError(
-                $"CORNER-SUMME UNGÜLTIG: " +
-                $"{cornerSum} % 3 = {cornerSum % 3}"
+                "Corner-Orientierungssumme " +
+                "nicht durch 3 teilbar: " +
+                cornerOrientationSum
             );
+
+            return false;
         }
 
 
-        if (!edgeSumValid)
+        if (
+            edgeOrientationSum % 2 != 0
+        )
         {
             Debug.LogError(
-                $"EDGE-SUMME UNGÜLTIG: " +
-                $"{edgeSum} % 2 = {edgeSum % 2}"
+                "Edge-Orientierungssumme " +
+                "nicht durch 2 teilbar: " +
+                edgeOrientationSum
             );
+
+            return false;
         }
 
 
-        return valid;
+        return true;
     }
 
 
-    // ==================================================
-    // SOLVER STATE PRÜFEN
-    // ==================================================
+    // ======================================================
+    // SOLVER STRUCTURE VALIDATION
+    // ======================================================
 
     private bool ValidateSolverStateInternal()
     {
-        bool valid = true;
+        List<Cubie> corners =
+            new List<Cubie>();
+
+        List<Cubie> edges =
+            new List<Cubie>();
+
+
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
+        {
+            if (cubie == null)
+                continue;
+
+
+            if (
+                cubie.Type ==
+                CubieType.Corner
+            )
+            {
+                corners.Add(cubie);
+            }
+
+
+            else if (
+                cubie.Type ==
+                CubieType.Edge
+            )
+            {
+                edges.Add(cubie);
+            }
+        }
+
+
+        if (corners.Count != 8)
+        {
+            Debug.LogError(
+                "Solver-State: " +
+                "Corner-Anzahl falsch: " +
+                corners.Count
+            );
+
+            return false;
+        }
+
+
+        if (edges.Count != 12)
+        {
+            Debug.LogError(
+                "Solver-State: " +
+                "Edge-Anzahl falsch: " +
+                edges.Count
+            );
+
+            return false;
+        }
 
 
         HashSet<string> cornerIDs =
@@ -593,7 +1017,6 @@ public class CubeStateTester : MonoBehaviour
         HashSet<string> edgeIDs =
             new HashSet<string>();
 
-
         HashSet<Vector3Int> cornerPositions =
             new HashSet<Vector3Int>();
 
@@ -601,247 +1024,166 @@ public class CubeStateTester : MonoBehaviour
             new HashSet<Vector3Int>();
 
 
-        int cornerCount = 0;
-        int edgeCount = 0;
+        // ==================================================
+        // CORNERS
+        // ==================================================
 
-
-        foreach (Cubie cubie in rubiksCube.cubies)
+        foreach (
+            Cubie corner
+            in corners
+        )
         {
-            if (cubie == null)
-            {
-                continue;
-            }
-
-
-            // ==================================================
-            // CORNERS
-            // ==================================================
-
-            if (cubie.Type == CubieType.Corner)
-            {
-                cornerCount++;
-
-
-                // ----------------------------------------------
-                // PIECE ID
-                // ----------------------------------------------
-
-                if (string.IsNullOrEmpty(cubie.pieceID))
-                {
-                    Debug.LogError(
-                        $"Corner ohne Piece-ID: {cubie.name}"
-                    );
-
-                    valid = false;
-                }
-                else if (!cornerIDs.Add(cubie.pieceID))
-                {
-                    Debug.LogError(
-                        $"Doppelte Corner-ID: {cubie.pieceID}"
-                    );
-
-                    valid = false;
-                }
-
-
-                // ----------------------------------------------
-                // POSITION GÜLTIG?
-                // ----------------------------------------------
-
-                if (!validCornerPositions.Contains(
-                    cubie.logicalPosition
-                ))
-                {
-                    Debug.LogError(
-                        $"Ungültige Corner-Position: " +
-                        $"{cubie.pieceID} | " +
-                        $"Pos={cubie.logicalPosition}"
-                    );
-
-                    valid = false;
-                }
-
-
-                // ----------------------------------------------
-                // POSITION EINDEUTIG?
-                // ----------------------------------------------
-
-                if (!cornerPositions.Add(
-                    cubie.logicalPosition
-                ))
-                {
-                    Debug.LogError(
-                        $"Doppelte Corner-Position: " +
-                        $"{cubie.logicalPosition}"
-                    );
-
-                    valid = false;
-                }
-
-
-                // ----------------------------------------------
-                // ORIENTATION
-                // ----------------------------------------------
-
-                if (
-                    cubie.orientation < 0 ||
-                    cubie.orientation > 2
+            if (
+                string.IsNullOrEmpty(
+                    corner.pieceID
                 )
-                {
-                    Debug.LogError(
-                        $"Solver: Ungültige Corner-Orientation: " +
-                        $"{cubie.pieceID} = {cubie.orientation}"
-                    );
-
-                    valid = false;
-                }
-            }
-
-
-            // ==================================================
-            // EDGES
-            // ==================================================
-
-            else if (cubie.Type == CubieType.Edge)
+            )
             {
-                edgeCount++;
+                Debug.LogError(
+                    "Corner ohne Piece-ID."
+                );
+
+                return false;
+            }
 
 
-                // ----------------------------------------------
-                // PIECE ID
-                // ----------------------------------------------
+            if (!cornerIDs.Add(
+                corner.pieceID
+            ))
+            {
+                Debug.LogError(
+                    "Doppelte Corner-ID: " +
+                    corner.pieceID
+                );
 
-                if (string.IsNullOrEmpty(cubie.pieceID))
-                {
-                    Debug.LogError(
-                        $"Edge ohne Piece-ID: {cubie.name}"
-                    );
-
-                    valid = false;
-                }
-                else if (!edgeIDs.Add(cubie.pieceID))
-                {
-                    Debug.LogError(
-                        $"Doppelte Edge-ID: {cubie.pieceID}"
-                    );
-
-                    valid = false;
-                }
+                return false;
+            }
 
 
-                // ----------------------------------------------
-                // POSITION GÜLTIG?
-                // ----------------------------------------------
+            if (!validCornerPositions.Contains(
+                corner.logicalPosition
+            ))
+            {
+                Debug.LogError(
+                    "Ungültige Corner-Position: " +
+                    corner.pieceID +
+                    " = " +
+                    corner.logicalPosition
+                );
 
-                if (!validEdgePositions.Contains(
-                    cubie.logicalPosition
-                ))
-                {
-                    Debug.LogError(
-                        $"Ungültige Edge-Position: " +
-                        $"{cubie.pieceID} | " +
-                        $"Pos={cubie.logicalPosition}"
-                    );
-
-                    valid = false;
-                }
+                return false;
+            }
 
 
-                // ----------------------------------------------
-                // POSITION EINDEUTIG?
-                // ----------------------------------------------
+            if (!cornerPositions.Add(
+                corner.logicalPosition
+            ))
+            {
+                Debug.LogError(
+                    "Doppelte Corner-Position: " +
+                    corner.logicalPosition
+                );
 
-                if (!edgePositions.Add(
-                    cubie.logicalPosition
-                ))
-                {
-                    Debug.LogError(
-                        $"Doppelte Edge-Position: " +
-                        $"{cubie.logicalPosition}"
-                    );
-
-                    valid = false;
-                }
+                return false;
+            }
 
 
-                // ----------------------------------------------
-                // ORIENTATION
-                // ----------------------------------------------
+            if (
+                corner.orientation < 0 ||
+                corner.orientation > 2
+            )
+            {
+                Debug.LogError(
+                    "Ungültige Corner-Orientation: " +
+                    corner.pieceID
+                );
 
-                if (
-                    cubie.orientation < 0 ||
-                    cubie.orientation > 1
-                )
-                {
-                    Debug.LogError(
-                        $"Solver: Ungültige Edge-Orientation: " +
-                        $"{cubie.pieceID} = {cubie.orientation}"
-                    );
-
-                    valid = false;
-                }
+                return false;
             }
         }
 
 
         // ==================================================
-        // ANZAHL
+        // EDGES
         // ==================================================
 
-        if (cornerCount != 8)
+        foreach (
+            Cubie edge
+            in edges
+        )
         {
-            Debug.LogError(
-                $"Solver-State: " +
-                $"Corner-Anzahl {cornerCount} statt 8"
-            );
+            if (
+                string.IsNullOrEmpty(
+                    edge.pieceID
+                )
+            )
+            {
+                Debug.LogError(
+                    "Edge ohne Piece-ID."
+                );
 
-            valid = false;
+                return false;
+            }
+
+
+            if (!edgeIDs.Add(
+                edge.pieceID
+            ))
+            {
+                Debug.LogError(
+                    "Doppelte Edge-ID: " +
+                    edge.pieceID
+                );
+
+                return false;
+            }
+
+
+            if (!validEdgePositions.Contains(
+                edge.logicalPosition
+            ))
+            {
+                Debug.LogError(
+                    "Ungültige Edge-Position: " +
+                    edge.pieceID +
+                    " = " +
+                    edge.logicalPosition
+                );
+
+                return false;
+            }
+
+
+            if (!edgePositions.Add(
+                edge.logicalPosition
+            ))
+            {
+                Debug.LogError(
+                    "Doppelte Edge-Position: " +
+                    edge.logicalPosition
+                );
+
+                return false;
+            }
+
+
+            if (
+                edge.orientation < 0 ||
+                edge.orientation > 1
+            )
+            {
+                Debug.LogError(
+                    "Ungültige Edge-Orientation: " +
+                    edge.pieceID
+                );
+
+                return false;
+            }
         }
 
 
-        if (edgeCount != 12)
-        {
-            Debug.LogError(
-                $"Solver-State: " +
-                $"Edge-Anzahl {edgeCount} statt 12"
-            );
-
-            valid = false;
-        }
-
-
         // ==================================================
-        // ALLE POSITIONEN BESETZT?
-        // ==================================================
-
-        if (cornerPositions.Count !=
-            validCornerPositions.Count)
-        {
-            Debug.LogError(
-                $"Solver-State: Nur " +
-                $"{cornerPositions.Count}/8 " +
-                $"Corner-Positionen eindeutig belegt."
-            );
-
-            valid = false;
-        }
-
-
-        if (edgePositions.Count !=
-            validEdgePositions.Count)
-        {
-            Debug.LogError(
-                $"Solver-State: Nur " +
-                $"{edgePositions.Count}/12 " +
-                $"Edge-Positionen eindeutig belegt."
-            );
-
-            valid = false;
-        }
-
-
-        // ==================================================
-        // ERLAUBTE POSITIONEN EXPLIZIT PRÜFEN
+        // ALLE POSITIONEN BELEGT?
         // ==================================================
 
         foreach (
@@ -849,14 +1191,16 @@ public class CubeStateTester : MonoBehaviour
             in validCornerPositions
         )
         {
-            if (!cornerPositions.Contains(position))
+            if (!cornerPositions.Contains(
+                position
+            ))
             {
                 Debug.LogError(
-                    $"Solver-State: Corner-Position fehlt: " +
-                    $"{position}"
+                    "Corner-Position nicht belegt: " +
+                    position
                 );
 
-                valid = false;
+                return false;
             }
         }
 
@@ -866,354 +1210,255 @@ public class CubeStateTester : MonoBehaviour
             in validEdgePositions
         )
         {
-            if (!edgePositions.Contains(position))
+            if (!edgePositions.Contains(
+                position
+            ))
             {
                 Debug.LogError(
-                    $"Solver-State: Edge-Position fehlt: " +
-                    $"{position}"
+                    "Edge-Position nicht belegt: " +
+                    position
                 );
 
-                valid = false;
+                return false;
             }
         }
 
 
-        Debug.Log(
-            $"Solver-State | " +
-            $"Corners={cornerCount} | " +
-            $"Edges={edgeCount} | " +
-            $"CornerIDs={cornerIDs.Count} | " +
-            $"EdgeIDs={edgeIDs.Count} | " +
-            $"CornerPos={cornerPositions.Count} | " +
-            $"EdgePos={edgePositions.Count}"
-        );
-
-
-        return valid;
+        return true;
     }
 
 
-    // ==================================================
-    // SOLVER STATE AUSGEBEN
-    // ==================================================
+    // ======================================================
+    // UNITY -> SOLVERSTATE COPY TEST
+    // ======================================================
 
-    private void PrintSolverState(
-        string title)
+    private bool ValidateSolverStateCopy()
     {
-        Debug.Log("");
-        Debug.Log(
-            "================ SOLVER STATE ================"
-        );
-        Debug.Log(title);
+        SolverState solverState =
+            new SolverState(
+                rubiksCube.cubies
+            );
 
 
-        List<Cubie> corners =
-            new List<Cubie>();
-
-        List<Cubie> edges =
-            new List<Cubie>();
-
-
-        foreach (Cubie cubie in rubiksCube.cubies)
+        if (!solverState.IsValid())
         {
-            if (cubie == null)
+            Debug.LogError(
+                "SolverState konnte nicht " +
+                "gültig erzeugt werden."
+            );
+
+            return false;
+        }
+
+
+        // ==================================================
+        // CORNERS
+        // ==================================================
+
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
+        {
+            if (
+                cubie == null ||
+                cubie.Type != CubieType.Corner
+            )
             {
                 continue;
             }
 
 
-            if (cubie.Type == CubieType.Corner)
-            {
-                corners.Add(cubie);
-            }
-
-            else if (cubie.Type == CubieType.Edge)
-            {
-                edges.Add(cubie);
-            }
-        }
-
-
-        // --------------------------------------------------
-        // CORNERS NACH POSITION SORTIEREN
-        // --------------------------------------------------
-
-        corners.Sort(
-            (a, b) =>
-            {
-                int yCompare =
-                    b.logicalPosition.y.CompareTo(
-                        a.logicalPosition.y
-                    );
-
-                if (yCompare != 0)
-                {
-                    return yCompare;
-                }
-
-
-                int zCompare =
-                    b.logicalPosition.z.CompareTo(
-                        a.logicalPosition.z
-                    );
-
-                if (zCompare != 0)
-                {
-                    return zCompare;
-                }
-
-
-                return b.logicalPosition.x.CompareTo(
-                    a.logicalPosition.x
-                );
-            }
-        );
-
-
-        Debug.Log(
-            "--- SOLVER CORNERS ---"
-        );
-
-
-        foreach (Cubie corner in corners)
-        {
-            Debug.Log(
-                $"Position={corner.logicalPosition} | " +
-                $"Piece={corner.pieceID} | " +
-                $"Orientation={corner.orientation}"
-            );
-        }
-
-
-        // --------------------------------------------------
-        // EDGES NACH POSITION SORTIEREN
-        // --------------------------------------------------
-
-        edges.Sort(
-            (a, b) =>
-            {
-                int yCompare =
-                    b.logicalPosition.y.CompareTo(
-                        a.logicalPosition.y
-                    );
-
-                if (yCompare != 0)
-                {
-                    return yCompare;
-                }
-
-
-                int zCompare =
-                    b.logicalPosition.z.CompareTo(
-                        a.logicalPosition.z
-                    );
-
-                if (zCompare != 0)
-                {
-                    return zCompare;
-                }
-
-
-                return b.logicalPosition.x.CompareTo(
-                    a.logicalPosition.x
-                );
-            }
-        );
-
-
-        Debug.Log(
-            "--- SOLVER EDGES ---"
-        );
-
-
-        foreach (Cubie edge in edges)
-        {
-            Debug.Log(
-                $"Position={edge.logicalPosition} | " +
-                $"Piece={edge.pieceID} | " +
-                $"Orientation={edge.orientation}"
-            );
-        }
-
-
-        Debug.Log(
-            "=============================================="
-        );
-    }
-
-
-    // ==================================================
-    // EDGE STATE
-    // ==================================================
-
-    private void PrintEdgeState(
-        string title)
-    {
-        List<Cubie> edges =
-            new List<Cubie>();
-
-
-        foreach (Cubie cubie in rubiksCube.cubies)
-        {
-            if (
-                cubie != null &&
-                cubie.Type == CubieType.Edge
-            )
-            {
-                edges.Add(cubie);
-            }
-        }
-
-
-        edges.Sort(
-            (a, b) =>
-                string.Compare(
-                    a.pieceID,
-                    b.pieceID,
-                    System.StringComparison.Ordinal
-                )
-        );
-
-
-        Debug.Log("");
-        Debug.Log(
-            "================ EDGE STATE ================"
-        );
-        Debug.Log(title);
-
-
-        int sum = 0;
-
-
-        foreach (Cubie edge in edges)
-        {
-            sum +=
-                edge.orientation;
-
-
-            string stickerInfo = "";
+            bool found = false;
 
 
             foreach (
-                CubieSticker sticker
-                in edge.stickers
+                SolverPieceState solverCorner
+                in solverState.corners
             )
             {
-                if (stickerInfo.Length > 0)
+                if (
+                    solverCorner.pieceID ==
+                    cubie.pieceID
+                )
                 {
-                    stickerInfo += " ";
+                    found = true;
+
+
+                    if (
+                        solverCorner.position !=
+                        cubie.logicalPosition
+                    )
+                    {
+                        Debug.LogError(
+                            "SolverState Corner-Position " +
+                            "stimmt nicht: " +
+                            cubie.pieceID +
+                            " | Cubie=" +
+                            cubie.logicalPosition +
+                            " | Solver=" +
+                            solverCorner.position
+                        );
+
+                        return false;
+                    }
+
+
+                    if (
+                        solverCorner.orientation !=
+                        cubie.orientation
+                    )
+                    {
+                        Debug.LogError(
+                            "SolverState Corner-Orientation " +
+                            "stimmt nicht: " +
+                            cubie.pieceID +
+                            " | Cubie=" +
+                            cubie.orientation +
+                            " | Solver=" +
+                            solverCorner.orientation
+                        );
+
+                        return false;
+                    }
+
+
+                    break;
                 }
-
-
-                stickerInfo +=
-                    sticker.originalDirection +
-                    "->" +
-                    sticker.currentDirection;
             }
 
 
-            Debug.Log(
-                $"{edge.pieceID} | " +
-                $"Edge | " +
-                $"Pos={edge.logicalPosition} | " +
-                $"Ori={edge.orientation} | " +
-                $"Stickers={stickerInfo}"
-            );
+            if (!found)
+            {
+                Debug.LogError(
+                    "Corner fehlt im SolverState: " +
+                    cubie.pieceID
+                );
+
+                return false;
+            }
         }
 
 
-        Debug.Log(
-            $"Edge-Summe: {sum} | " +
-            $"MOD 2: {sum % 2}"
-        );
+        // ==================================================
+        // EDGES
+        // ==================================================
 
-        Debug.Log(
-            "============================================"
-        );
-    }
-
-
-    // ==================================================
-    // CORNER STATE
-    // ==================================================
-
-    private void PrintCornerSummary()
-    {
-        List<Cubie> corners =
-            new List<Cubie>();
-
-
-        foreach (Cubie cubie in rubiksCube.cubies)
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
         {
             if (
-                cubie != null &&
-                cubie.Type == CubieType.Corner
+                cubie == null ||
+                cubie.Type != CubieType.Edge
             )
             {
-                corners.Add(cubie);
+                continue;
+            }
+
+
+            bool found = false;
+
+
+            foreach (
+                SolverPieceState solverEdge
+                in solverState.edges
+            )
+            {
+                if (
+                    solverEdge.pieceID ==
+                    cubie.pieceID
+                )
+                {
+                    found = true;
+
+
+                    if (
+                        solverEdge.position !=
+                        cubie.logicalPosition
+                    )
+                    {
+                        Debug.LogError(
+                            "SolverState Edge-Position " +
+                            "stimmt nicht: " +
+                            cubie.pieceID +
+                            " | Cubie=" +
+                            cubie.logicalPosition +
+                            " | Solver=" +
+                            solverEdge.position
+                        );
+
+                        return false;
+                    }
+
+
+                    if (
+                        solverEdge.orientation !=
+                        cubie.orientation
+                    )
+                    {
+                        Debug.LogError(
+                            "SolverState Edge-Orientation " +
+                            "stimmt nicht: " +
+                            cubie.pieceID +
+                            " | Cubie=" +
+                            cubie.orientation +
+                            " | Solver=" +
+                            solverEdge.orientation
+                        );
+
+                        return false;
+                    }
+
+
+                    break;
+                }
+            }
+
+
+            if (!found)
+            {
+                Debug.LogError(
+                    "Edge fehlt im SolverState: " +
+                    cubie.pieceID
+                );
+
+                return false;
             }
         }
 
 
-        corners.Sort(
-            (a, b) =>
-                string.Compare(
-                    a.pieceID,
-                    b.pieceID,
-                    System.StringComparison.Ordinal
-                )
-        );
-
-
-        Debug.Log(
-            "CORNER SUMMARY:"
-        );
-
-
-        foreach (Cubie corner in corners)
-        {
-            Debug.Log(
-                $"{corner.pieceID} | " +
-                $"Pos={corner.logicalPosition} | " +
-                $"Ori={corner.orientation}"
-            );
-        }
+        return true;
     }
 
 
-    // ==================================================
-    // ZUG AUSFÜHREN UND AUF ABSCHLUSS WARTEN
-    // ==================================================
+    // ======================================================
+    // EXECUTE UNITY MOVE AND WAIT
+    // ======================================================
 
     private IEnumerator ExecuteAndWait(
-        RotationAxis axis,
-        int layer,
-        int direction,
-        string moveName)
+        string move)
     {
-        Debug.Log(
-            ">>> " +
-            moveName
-        );
+        bool executed =
+            ExecuteUnityMove(move);
 
 
-        CubeMove move =
-            new CubeMove(
-                axis,
-                layer,
-                direction
+        if (!executed)
+        {
+            Debug.LogError(
+                "Unity-Move konnte nicht " +
+                "ausgeführt werden: " +
+                move
             );
 
-
-        rubiksCube.ExecuteInputMove(
-            move
-        );
+            yield break;
+        }
 
 
-        // Einen Frame geben,
-        // damit die Rotation sicher starten kann.
-        yield return null;
-
+        // ==================================================
+        // Auf Ende der ersten Rotation warten
+        // ==================================================
 
         while (
             rubiksCube.IsCurrentlyRotating()
@@ -1223,105 +1468,73 @@ public class CubeStateTester : MonoBehaviour
         }
 
 
-        // Einen weiteren Frame
-        // für alle logischen Updates.
-        yield return null;
-    }
+        // ==================================================
+        // Bei 180°-Moves wurde die zweite Rotation als
+        // Coroutine gestartet.
+        //
+        // Einen Frame warten, damit diese starten kann.
+        // ==================================================
 
-
-    // ==================================================
-    // SEQUENZ PARSEN
-    // ==================================================
-
-    private List<MoveDefinition> ParseSequence(
-        string sequence)
-    {
-        List<MoveDefinition> result =
-            new List<MoveDefinition>();
-
-
-        string[] tokens =
-            sequence.Split(
-                new char[]
-                {
-                    ' ',
-                    '\t',
-                    '\r',
-                    '\n'
-                },
-                System.StringSplitOptions.RemoveEmptyEntries
-            );
-
-
-        foreach (string rawToken in tokens)
+        if (
+            move.Contains("2")
+        )
         {
-            string token =
-                rawToken
-                    .Trim()
-                    .ToUpperInvariant();
+            yield return null;
 
 
-            bool prime =
-                token.EndsWith("'");
-
-
-            bool twice =
-                token.EndsWith("2") ||
-                token.EndsWith("2'");
-
-
-            string baseMove =
-                token
-                    .Replace("'", "")
-                    .Replace("2", "");
-
-
-            MoveDefinition move;
-
-
-            if (!TryCreateMove(
-                baseMove,
-                prime,
-                out move
-            ))
+            while (
+                rubiksCube.IsCurrentlyRotating()
+            )
             {
-                Debug.LogError(
-                    $"Unbekannter Zug im Tester: '{rawToken}'"
-                );
-
-                continue;
-            }
-
-
-            result.Add(
-                move
-            );
-
-
-            if (twice)
-            {
-                result.Add(
-                    move
-                );
+                yield return null;
             }
         }
 
 
-        return result;
+        if (waitAfterMove > 0f)
+        {
+            yield return
+                new WaitForSeconds(
+                    waitAfterMove
+                );
+        }
     }
 
 
-    // ==================================================
-    // MOVE ERZEUGEN
-    // ==================================================
+    // ======================================================
+    // UNITY MOVE PARSER
+    // ======================================================
 
-    private bool TryCreateMove(
-        string moveName,
-        bool prime,
-        out MoveDefinition move)
+    private bool ExecuteUnityMove(
+        string move)
     {
-        move =
-            new MoveDefinition();
+        if (string.IsNullOrWhiteSpace(
+            move
+        ))
+        {
+            return false;
+        }
+
+
+        string token =
+            move
+                .Trim()
+                .ToUpperInvariant();
+
+
+        bool prime =
+            token.EndsWith("'");
+
+
+        bool twice =
+            token.EndsWith("2") ||
+            token.EndsWith("2'");
+
+
+        string baseMove =
+            token
+                .Replace("'", "")
+                .Replace("2", "");
 
 
         RotationAxis axis;
@@ -1329,105 +1542,55 @@ public class CubeStateTester : MonoBehaviour
         int direction;
 
 
-        switch (moveName)
+        switch (baseMove)
         {
-            // ----------------------------------------------
-            // U
-            // ----------------------------------------------
-
             case "U":
-
-                axis =
-                    RotationAxis.Y;
-
+                axis = RotationAxis.Y;
                 layer = 1;
-
                 direction = 1;
-
                 break;
 
-
-            // ----------------------------------------------
-            // D
-            // ----------------------------------------------
 
             case "D":
-
-                axis =
-                    RotationAxis.Y;
-
+                axis = RotationAxis.Y;
                 layer = -1;
-
                 direction = -1;
-
                 break;
 
-
-            // ----------------------------------------------
-            // R
-            // ----------------------------------------------
 
             case "R":
-
-                axis =
-                    RotationAxis.X;
-
+                axis = RotationAxis.X;
                 layer = 1;
-
                 direction = 1;
-
                 break;
 
-
-            // ----------------------------------------------
-            // L
-            // ----------------------------------------------
 
             case "L":
-
-                axis =
-                    RotationAxis.X;
-
+                axis = RotationAxis.X;
                 layer = -1;
-
                 direction = -1;
-
                 break;
 
-
-            // ----------------------------------------------
-            // F
-            // ----------------------------------------------
 
             case "F":
-
-                axis =
-                    RotationAxis.Z;
-
+                axis = RotationAxis.Z;
                 layer = 1;
-
                 direction = -1;
-
                 break;
 
 
-            // ----------------------------------------------
-            // B
-            // ----------------------------------------------
-
             case "B":
-
-                axis =
-                    RotationAxis.Z;
-
+                axis = RotationAxis.Z;
                 layer = -1;
-
                 direction = 1;
-
                 break;
 
 
             default:
+                Debug.LogError(
+                    "Unbekannter Move: " +
+                    move
+                );
 
                 return false;
         }
@@ -1439,149 +1602,215 @@ public class CubeStateTester : MonoBehaviour
         }
 
 
-        move =
-            new MoveDefinition(
+        // ==================================================
+        // Öffentliche Schnittstelle von RubiksCube benutzen
+        // ==================================================
+
+        CubeMove cubeMove =
+            new CubeMove(
                 axis,
                 layer,
-                direction,
-                moveName +
-                (prime ? "'" : "")
+                direction
             );
+
+
+        rubiksCube.ExecuteInputMove(
+            cubeMove
+        );
+
+
+        // ==================================================
+        // 180° = denselben Move zweimal
+        // ==================================================
+
+        if (twice)
+        {
+            StartCoroutine(
+                ExecuteSecondHalfTurn(
+                    axis,
+                    layer,
+                    direction
+                )
+            );
+        }
 
 
         return true;
     }
 
 
-    // ==================================================
-    // MANUELLE DIAGNOSE
-    // ==================================================
+    // ======================================================
+    // SECOND HALF OF 180° MOVE
+    // ======================================================
 
-    [ContextMenu(
-        "Aktuellen kompletten State prüfen"
-    )]
+    private IEnumerator ExecuteSecondHalfTurn(
+        RotationAxis axis,
+        int layer,
+        int direction)
+    {
+        // Erste 90°-Drehung abwarten
+        while (
+            rubiksCube.IsCurrentlyRotating()
+        )
+        {
+            yield return null;
+        }
+
+
+        // Zweite 90°-Drehung über die öffentliche
+        // Schnittstelle ausführen
+        CubeMove secondMove =
+            new CubeMove(
+                axis,
+                layer,
+                direction
+            );
+
+
+        rubiksCube.ExecuteInputMove(
+            secondMove
+        );
+
+
+        // Auch zweite Drehung vollständig abwarten
+        while (
+            rubiksCube.IsCurrentlyRotating()
+        )
+        {
+            yield return null;
+        }
+    }
+
+
+    // ======================================================
+    // PRINT SOLVER STATE FROM UNITY
+    // ======================================================
+
+    [ContextMenu("Print Solver State")]
+    public void PrintSolverState()
+    {
+        if (
+            rubiksCube == null ||
+            rubiksCube.cubies == null
+        )
+        {
+            Debug.LogError(
+                "RubiksCube oder Cubie-Liste fehlt."
+            );
+
+            return;
+        }
+
+
+        Debug.Log(
+            "========================================"
+        );
+
+        Debug.Log(
+            "SOLVER STATE"
+        );
+
+        Debug.Log(
+            "========================================"
+        );
+
+
+        Debug.Log(
+            "--- CORNERS ---"
+        );
+
+
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
+        {
+            if (
+                cubie != null &&
+                cubie.Type ==
+                CubieType.Corner
+            )
+            {
+                Debug.Log(
+                    cubie.logicalPosition +
+                    " -> " +
+                    cubie.pieceID +
+                    " | Ori=" +
+                    cubie.orientation
+                );
+            }
+        }
+
+
+        Debug.Log(
+            "--- EDGES ---"
+        );
+
+
+        foreach (
+            Cubie cubie
+            in rubiksCube.cubies
+        )
+        {
+            if (
+                cubie != null &&
+                cubie.Type ==
+                CubieType.Edge
+            )
+            {
+                Debug.Log(
+                    cubie.logicalPosition +
+                    " -> " +
+                    cubie.pieceID +
+                    " | Ori=" +
+                    cubie.orientation
+                );
+            }
+        }
+
+
+        Debug.Log(
+            "========================================"
+        );
+    }
+
+
+    // ======================================================
+    // MANUAL VALIDATION
+    // ======================================================
+
+    [ContextMenu("Validate Current State")]
     public void ValidateCurrentState()
     {
-        if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
-
-        if (rubiksCube == null)
+        if (
+            rubiksCube == null ||
+            rubiksCube.cubies == null
+        )
         {
             Debug.LogError(
-                "CubeStateTester: RubiksCube fehlt."
+                "RubiksCube oder Cubie-Liste fehlt."
             );
 
             return;
         }
 
 
-        ValidateState(
-            "MANUELL",
-            "<manueller Zustand>"
-        );
-    }
+        bool valid =
+            ValidateState();
 
 
-    // ==================================================
-    // SOLVER STATE MANUELL AUSGEBEN
-    // ==================================================
-
-    [ContextMenu(
-        "Aktuellen Solver-State ausgeben"
-    )]
-    public void PrintCurrentSolverState()
-    {
-        if (rubiksCube == null)
+        if (valid)
         {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
+            Debug.Log(
+                "SOLVER-STATE TEST: " +
+                "ALLE PRÜFUNGEN BESTANDEN"
+            );
         }
-
-
-        if (rubiksCube == null)
+        else
         {
             Debug.LogError(
-                "CubeStateTester: RubiksCube fehlt."
+                "SOLVER-STATE TEST: FEHLER"
             );
-
-            return;
-        }
-
-
-        PrintSolverState(
-            "MANUELLER SOLVER STATE"
-        );
-    }
-
-
-    // ==================================================
-    // EDGES MANUELL AUSGEBEN
-    // ==================================================
-
-    [ContextMenu(
-        "Aktuelle Edges ausgeben"
-    )]
-    public void PrintCurrentEdges()
-    {
-        if (rubiksCube == null)
-        {
-            rubiksCube =
-                FindFirstObjectByType<RubiksCube>();
-        }
-
-
-        if (rubiksCube == null)
-        {
-            Debug.LogError(
-                "CubeStateTester: RubiksCube fehlt."
-            );
-
-            return;
-        }
-
-
-        PrintEdgeState(
-            "MANUELLER STATE"
-        );
-    }
-
-
-    // ==================================================
-    // MOVE DEFINITION
-    // ==================================================
-
-    private struct MoveDefinition
-    {
-        public RotationAxis axis;
-
-        public int layer;
-
-        public int direction;
-
-        public string name;
-
-
-        public MoveDefinition(
-            RotationAxis axis,
-            int layer,
-            int direction,
-            string name)
-        {
-            this.axis =
-                axis;
-
-            this.layer =
-                layer;
-
-            this.direction =
-                direction;
-
-            this.name =
-                name;
         }
     }
 }
