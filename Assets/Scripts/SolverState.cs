@@ -25,15 +25,23 @@ public struct SolverPieceState
 
     public int orientation;
 
+    // Aktuelle Richtung des für die Orientation maßgeblichen Stickers.
+    // Corner: ursprünglicher U/D-Sticker
+    // Edge mit U/D-Sticker: ursprünglicher U/D-Sticker
+    // Edge ohne U/D-Sticker: ursprünglicher F/B-Sticker
+    public FaceDirection referenceDirection;
+
 
     public SolverPieceState(
         string pieceID,
         Vector3Int position,
-        int orientation)
+        int orientation,
+        FaceDirection referenceDirection)
     {
         this.pieceID = pieceID;
         this.position = position;
         this.orientation = orientation;
+        this.referenceDirection = referenceDirection;
     }
 
 
@@ -136,19 +144,24 @@ public class SolverState
             }
 
 
-            SolverPieceState state =
-                new SolverPieceState(
-                    cubie.pieceID,
-                    cubie.logicalPosition,
-                    cubie.orientation
-                );
-
-
             if (
                 cubie.Type ==
                 CubieType.Corner
             )
             {
+                FaceDirection referenceDirection =
+                    GetCornerReferenceDirection(
+                        cubie
+                    );
+
+                SolverPieceState state =
+                    new SolverPieceState(
+                        cubie.pieceID,
+                        cubie.logicalPosition,
+                        cubie.orientation,
+                        referenceDirection
+                    );
+
                 corners.Add(
                     state
                 );
@@ -160,6 +173,19 @@ public class SolverState
                 CubieType.Edge
             )
             {
+                FaceDirection referenceDirection =
+                    GetEdgeReferenceDirection(
+                        cubie
+                    );
+
+                SolverPieceState state =
+                    new SolverPieceState(
+                        cubie.pieceID,
+                        cubie.logicalPosition,
+                        cubie.orientation,
+                        referenceDirection
+                    );
+
                 edges.Add(
                     state
                 );
@@ -193,6 +219,91 @@ public class SolverState
                     b.pieceID
                 )
         );
+    }
+
+
+    // ======================================================
+    // REFERENCE-DIRECTION AUS UNITY ÜBERNEHMEN
+    // ======================================================
+
+    private FaceDirection GetCornerReferenceDirection(
+        Cubie cubie)
+    {
+        foreach (
+            CubieSticker sticker
+            in cubie.stickers
+        )
+        {
+            if (
+                sticker.originalDirection ==
+                    FaceDirection.PositiveY ||
+                sticker.originalDirection ==
+                    FaceDirection.NegativeY
+            )
+            {
+                return
+                    sticker.currentDirection;
+            }
+        }
+
+        Debug.LogError(
+            "SolverState: Corner " +
+            cubie.pieceID +
+            " besitzt keinen U/D-Referenzsticker."
+        );
+
+        return FaceDirection.PositiveY;
+    }
+
+
+    private FaceDirection GetEdgeReferenceDirection(
+        Cubie cubie)
+    {
+        // Zuerst wie in Cubie.UpdateEdgeOrientationFromStickers()
+        // nach einem ursprünglichen U/D-Sticker suchen.
+        foreach (
+            CubieSticker sticker
+            in cubie.stickers
+        )
+        {
+            if (
+                sticker.originalDirection ==
+                    FaceDirection.PositiveY ||
+                sticker.originalDirection ==
+                    FaceDirection.NegativeY
+            )
+            {
+                return
+                    sticker.currentDirection;
+            }
+        }
+
+        // Hat die Edge keinen U/D-Sticker, ist ihr ursprünglicher
+        // F/B-Sticker die Referenz.
+        foreach (
+            CubieSticker sticker
+            in cubie.stickers
+        )
+        {
+            if (
+                sticker.originalDirection ==
+                    FaceDirection.PositiveZ ||
+                sticker.originalDirection ==
+                    FaceDirection.NegativeZ
+            )
+            {
+                return
+                    sticker.currentDirection;
+            }
+        }
+
+        Debug.LogError(
+            "SolverState: Edge " +
+            cubie.pieceID +
+            " besitzt keinen gültigen Referenzsticker."
+        );
+
+        return FaceDirection.PositiveZ;
     }
 
 
@@ -781,7 +892,6 @@ public class SolverState
             SolverPieceState corner =
                 corners[i];
 
-
             if (!IsInLayer(
                 corner.position,
                 axis,
@@ -791,61 +901,19 @@ public class SolverState
                 continue;
             }
 
-
             Vector3Int oldPosition =
                 corner.position;
 
+            // Referenzsticker exakt wie in Cubie.RotateStickers()
+            // mathematisch mitdrehen.
+            corner.referenceDirection =
+                RotateFaceDirection(
+                    corner.referenceDirection,
+                    axis,
+                    direction
+                );
 
-            // ==============================================
-            // CORNER ORIENTATION
-            // ==============================================
-            //
-            // Muss exakt derselben Konvention wie
-            // Cubie.UpdateCornerOrientation() folgen.
-            // ==============================================
-
-            int delta = 0;
-
-
-            // U / D
-            if (axis == RotationAxis.Y)
-            {
-                delta = 0;
-            }
-
-
-            // R / L
-            else if (axis == RotationAxis.X)
-            {
-                delta =
-                oldPosition.z > 0
-                        ? 1
-                        : 2;
-            }
-
-
-            // F / B
-            else if (axis == RotationAxis.Z)
-            {
-                delta =
-                oldPosition.x > 0
-                ? 2
-                : 1;
-            }
-
-
-            corner.orientation =
-                (
-                    corner.orientation +
-                    delta
-                )
-                % 3;
-
-
-            // ==============================================
-            // POSITION
-            // ==============================================
-
+            // Position drehen.
             corner.position =
                 RotatePosition(
                     oldPosition,
@@ -853,10 +921,13 @@ public class SolverState
                     direction
                 );
 
-
-            // ==============================================
-            // STRUCT ZURÜCK IN LISTE SCHREIBEN
-            // ==============================================
+            // Orientation erst NACH der gedrehten Referenzrichtung
+            // neu bestimmen – genau wie auf der Unity-Seite.
+            corner.orientation =
+                GetCornerOrientation(
+                    corner.pieceID,
+                    corner.referenceDirection
+                );
 
             corners[i] =
                 corner;
@@ -882,7 +953,6 @@ public class SolverState
             SolverPieceState edge =
                 edges[i];
 
-
             if (!IsInLayer(
                 edge.position,
                 axis,
@@ -892,33 +962,15 @@ public class SolverState
                 continue;
             }
 
-
             Vector3Int oldPosition =
                 edge.position;
 
-
-            // ==============================================
-            // EDGE ORIENTATION
-            // ==============================================
-            //
-            // In unserer aktuellen Konvention flippen
-            // Edges nur bei F/B-Zügen.
-            // ==============================================
-
-            if (
-                axis ==
-                RotationAxis.Z
-            )
-            {
-                edge.orientation =
-                    1 -
-                    edge.orientation;
-            }
-
-
-            // ==============================================
-            // POSITION
-            // ==============================================
+            edge.referenceDirection =
+                RotateFaceDirection(
+                    edge.referenceDirection,
+                    axis,
+                    direction
+                );
 
             edge.position =
                 RotatePosition(
@@ -927,14 +979,239 @@ public class SolverState
                     direction
                 );
 
-
-            // ==============================================
-            // STRUCT ZURÜCK IN LISTE SCHREIBEN
-            // ==============================================
+            edge.orientation =
+                GetEdgeOrientation(
+                    edge.pieceID,
+                    edge.referenceDirection
+                );
 
             edges[i] =
                 edge;
         }
+    }
+
+
+    // ======================================================
+    // ORIENTATION AUS REFERENZRICHTUNG
+    // ======================================================
+
+    private int GetCornerOrientation(
+        string pieceID,
+        FaceDirection referenceDirection)
+    {
+        if (
+            referenceDirection ==
+                FaceDirection.PositiveY ||
+            referenceDirection ==
+                FaceDirection.NegativeY
+        )
+        {
+            return 0;
+        }
+
+        bool isUCorner =
+            pieceID.StartsWith("U");
+
+        if (
+            referenceDirection ==
+                FaceDirection.PositiveX ||
+            referenceDirection ==
+                FaceDirection.NegativeX
+        )
+        {
+            return
+                isUCorner
+                    ? 1
+                    : 2;
+        }
+
+        if (
+            referenceDirection ==
+                FaceDirection.PositiveZ ||
+            referenceDirection ==
+                FaceDirection.NegativeZ
+        )
+        {
+            return
+                isUCorner
+                    ? 2
+                    : 1;
+        }
+
+        Debug.LogError(
+            "SolverState: Corner-Orientation konnte nicht bestimmt werden: " +
+            pieceID
+        );
+
+        return 0;
+    }
+
+
+    private int GetEdgeOrientation(
+        string pieceID,
+        FaceDirection referenceDirection)
+    {
+        bool hasUDSticker =
+            pieceID.Contains("U") ||
+            pieceID.Contains("D");
+
+        if (hasUDSticker)
+        {
+            if (
+                referenceDirection ==
+                    FaceDirection.PositiveY ||
+                referenceDirection ==
+                    FaceDirection.NegativeY
+            )
+            {
+                return 0;
+            }
+
+            return 1;
+        }
+
+        if (
+            referenceDirection ==
+                FaceDirection.PositiveZ ||
+            referenceDirection ==
+                FaceDirection.NegativeZ
+        )
+        {
+            return 0;
+        }
+
+        return 1;
+    }
+
+
+    // ======================================================
+    // FACE-RICHTUNG DREHEN
+    // ======================================================
+    //
+    // Exakt dieselbe Richtungsabbildung wie
+    // Cubie.RotateFaceDirection().
+    // ======================================================
+
+    private FaceDirection RotateFaceDirection(
+        FaceDirection face,
+        RotationAxis axis,
+        int direction)
+    {
+        if (axis == RotationAxis.X)
+        {
+            if (direction == 1)
+            {
+                switch (face)
+                {
+                    case FaceDirection.PositiveY:
+                        return FaceDirection.PositiveZ;
+
+                    case FaceDirection.PositiveZ:
+                        return FaceDirection.NegativeY;
+
+                    case FaceDirection.NegativeY:
+                        return FaceDirection.NegativeZ;
+
+                    case FaceDirection.NegativeZ:
+                        return FaceDirection.PositiveY;
+                }
+            }
+            else
+            {
+                switch (face)
+                {
+                    case FaceDirection.PositiveY:
+                        return FaceDirection.NegativeZ;
+
+                    case FaceDirection.NegativeZ:
+                        return FaceDirection.NegativeY;
+
+                    case FaceDirection.NegativeY:
+                        return FaceDirection.PositiveZ;
+
+                    case FaceDirection.PositiveZ:
+                        return FaceDirection.PositiveY;
+                }
+            }
+        }
+
+        if (axis == RotationAxis.Y)
+        {
+            if (direction == 1)
+            {
+                switch (face)
+                {
+                    case FaceDirection.PositiveX:
+                        return FaceDirection.PositiveZ;
+
+                    case FaceDirection.PositiveZ:
+                        return FaceDirection.NegativeX;
+
+                    case FaceDirection.NegativeX:
+                        return FaceDirection.NegativeZ;
+
+                    case FaceDirection.NegativeZ:
+                        return FaceDirection.PositiveX;
+                }
+            }
+            else
+            {
+                switch (face)
+                {
+                    case FaceDirection.PositiveX:
+                        return FaceDirection.NegativeZ;
+
+                    case FaceDirection.NegativeZ:
+                        return FaceDirection.NegativeX;
+
+                    case FaceDirection.NegativeX:
+                        return FaceDirection.PositiveZ;
+
+                    case FaceDirection.PositiveZ:
+                        return FaceDirection.PositiveX;
+                }
+            }
+        }
+
+        if (axis == RotationAxis.Z)
+        {
+            if (direction == 1)
+            {
+                switch (face)
+                {
+                    case FaceDirection.PositiveX:
+                        return FaceDirection.PositiveY;
+
+                    case FaceDirection.PositiveY:
+                        return FaceDirection.NegativeX;
+
+                    case FaceDirection.NegativeX:
+                        return FaceDirection.NegativeY;
+
+                    case FaceDirection.NegativeY:
+                        return FaceDirection.PositiveX;
+                }
+            }
+            else
+            {
+                switch (face)
+                {
+                    case FaceDirection.PositiveX:
+                        return FaceDirection.NegativeY;
+
+                    case FaceDirection.NegativeY:
+                        return FaceDirection.NegativeX;
+
+                    case FaceDirection.NegativeX:
+                        return FaceDirection.PositiveY;
+
+                    case FaceDirection.PositiveY:
+                        return FaceDirection.PositiveX;
+                }
+            }
+        }
+
+        return face;
     }
 
 

@@ -3596,4 +3596,569 @@ private IEnumerator RunUnityInverseTestCoroutine()
         "========================================"
     );
 }
+
+// ======================================================
+// SOLVER-ONLY INVERSE TEST
+// ======================================================
+//
+// Testet ausschließlich SolverState.
+// Unity wird während der einzelnen Tests NICHT bewegt.
+//
+// Zusätzlich zu Position und Orientation wird auch die
+// interne referenceDirection geprüft.
+// ======================================================
+
+[ContextMenu("Run Solver Inverse Test")]
+public void RunSolverInverseTest()
+{
+    if (
+        rubiksCube == null ||
+        rubiksCube.cubies == null
+    )
+    {
+        Debug.LogError(
+            "SOLVER INVERSE TEST: RubiksCube oder Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+
+    string[] inverseTests =
+    {
+        "R R'",
+        "R' R",
+
+        "L L'",
+        "L' L",
+
+        "U U'",
+        "U' U",
+
+        "D D'",
+        "D' D",
+
+        "F F'",
+        "F' F",
+
+        "B B'",
+        "B' B"
+    };
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START SOLVER INVERSE TEST"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    SolverState sourceState =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    if (!sourceState.IsValid())
+    {
+        Debug.LogError(
+            "SOLVER INVERSE TEST: Ausgangszustand ist ungültig."
+        );
+
+        return;
+    }
+
+
+    int passedTests = 0;
+
+
+    foreach (
+        string sequence
+        in inverseTests
+    )
+    {
+        SolverState before =
+            sourceState.Clone();
+
+        SolverState after =
+            sourceState.Clone();
+
+
+        string[] moves =
+            sequence.Split(
+                ' ',
+                System.StringSplitOptions.RemoveEmptyEntries
+            );
+
+
+        bool moveFailed = false;
+
+
+        foreach (
+            string move
+            in moves
+        )
+        {
+            if (!after.ApplyMove(move))
+            {
+                Debug.LogError(
+                    "SOLVER INVERSE TEST FEHLER: " +
+                    sequence +
+                    " | Move konnte nicht ausgeführt werden: " +
+                    move
+                );
+
+                moveFailed = true;
+                break;
+            }
+
+
+            if (!after.IsValid())
+            {
+                Debug.LogError(
+                    "SOLVER INVERSE TEST FEHLER: " +
+                    sequence +
+                    " | SolverState wurde nach Move " +
+                    move +
+                    " ungültig."
+                );
+
+                after.Print();
+
+                moveFailed = true;
+                break;
+            }
+        }
+
+
+        if (moveFailed)
+        {
+            return;
+        }
+
+
+        if (!CompareSolverStatesIncludingReferenceDirection(
+            before,
+            after,
+            sequence
+        ))
+        {
+            Debug.LogError(
+                "SOLVER INVERSE TEST FEHLGESCHLAGEN: " +
+                sequence
+            );
+
+            return;
+        }
+
+
+        if (
+            before.GetStateKey() !=
+            after.GetStateKey()
+        )
+        {
+            Debug.LogError(
+                "SOLVER INVERSE TEST FEHLER: " +
+                sequence +
+                " erzeugt nach Rückkehr einen anderen State Key."
+            );
+
+            return;
+        }
+
+
+        passedTests++;
+
+
+        Debug.Log(
+            sequence +
+            " -> OK"
+        );
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "SOLVER INVERSE TEST BESTANDEN"
+    );
+
+    Debug.Log(
+        passedTests +
+        " / " +
+        inverseTests.Length +
+        " Zugpaare korrekt."
+    );
+
+    Debug.Log(
+        "Position, Orientation, referenceDirection und State Key stimmen."
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+}
+
+
+// ======================================================
+// SOLVER-VERGLEICH INKL. REFERENZRICHTUNG
+// ======================================================
+
+private bool CompareSolverStatesIncludingReferenceDirection(
+    SolverState expected,
+    SolverState actual,
+    string context)
+{
+    if (
+        expected == null ||
+        actual == null
+    )
+    {
+        Debug.LogError(
+            "SOLVER INVERSE TEST: Null-State | " +
+            context
+        );
+
+        return false;
+    }
+
+
+    foreach (
+        SolverPieceState expectedPiece
+        in expected.corners
+    )
+    {
+        bool found = false;
+
+
+        foreach (
+            SolverPieceState actualPiece
+            in actual.corners
+        )
+        {
+            if (
+                expectedPiece.pieceID !=
+                actualPiece.pieceID
+            )
+            {
+                continue;
+            }
+
+
+            found = true;
+
+
+            if (
+                expectedPiece.position !=
+                actualPiece.position ||
+                expectedPiece.orientation !=
+                actualPiece.orientation ||
+                expectedPiece.referenceDirection !=
+                actualPiece.referenceDirection
+            )
+            {
+                Debug.LogError(
+                    "SOLVER INVERSE CORNER UNTERSCHIED | " +
+                    context +
+                    " | Piece=" +
+                    expectedPiece.pieceID +
+                    " | Expected Pos=" +
+                    expectedPiece.position +
+                    " Ori=" +
+                    expectedPiece.orientation +
+                    " Ref=" +
+                    expectedPiece.referenceDirection +
+                    " | Actual Pos=" +
+                    actualPiece.position +
+                    " Ori=" +
+                    actualPiece.orientation +
+                    " Ref=" +
+                    actualPiece.referenceDirection
+                );
+
+                return false;
+            }
+
+
+            break;
+        }
+
+
+        if (!found)
+        {
+            Debug.LogError(
+                "SOLVER INVERSE TEST: Corner fehlt | " +
+                context +
+                " | Piece=" +
+                expectedPiece.pieceID
+            );
+
+            return false;
+        }
+    }
+
+
+    foreach (
+        SolverPieceState expectedPiece
+        in expected.edges
+    )
+    {
+        bool found = false;
+
+
+        foreach (
+            SolverPieceState actualPiece
+            in actual.edges
+        )
+        {
+            if (
+                expectedPiece.pieceID !=
+                actualPiece.pieceID
+            )
+            {
+                continue;
+            }
+
+
+            found = true;
+
+
+            if (
+                expectedPiece.position !=
+                actualPiece.position ||
+                expectedPiece.orientation !=
+                actualPiece.orientation ||
+                expectedPiece.referenceDirection !=
+                actualPiece.referenceDirection
+            )
+            {
+                Debug.LogError(
+                    "SOLVER INVERSE EDGE UNTERSCHIED | " +
+                    context +
+                    " | Piece=" +
+                    expectedPiece.pieceID +
+                    " | Expected Pos=" +
+                    expectedPiece.position +
+                    " Ori=" +
+                    expectedPiece.orientation +
+                    " Ref=" +
+                    expectedPiece.referenceDirection +
+                    " | Actual Pos=" +
+                    actualPiece.position +
+                    " Ori=" +
+                    actualPiece.orientation +
+                    " Ref=" +
+                    actualPiece.referenceDirection
+                );
+
+                return false;
+            }
+
+
+            break;
+        }
+
+
+        if (!found)
+        {
+            Debug.LogError(
+                "SOLVER INVERSE TEST: Edge fehlt | " +
+                context +
+                " | Piece=" +
+                expectedPiece.pieceID
+            );
+
+            return false;
+        }
+    }
+
+
+    return true;
+}
+
+
+// ======================================================
+// EDGE ORIENTATION DIAGNOSE: START -> F -> U
+// ======================================================
+//
+// Führt gezielt F und danach U in Unity aus.
+// Nach START, F und U werden alle 12 Edges mit
+// Position, Orientation und sämtlichen Sticker-Richtungen
+// ausgegeben.
+//
+// Dieser Test verändert den Unity-Würfel.
+// Am besten aus gelöstem Zustand starten.
+// ======================================================
+
+[ContextMenu("Run Edge Diagnose F U")]
+public void RunEdgeDiagnoseFU()
+{
+    if (
+        rubiksCube == null ||
+        rubiksCube.cubies == null
+    )
+    {
+        Debug.LogError(
+            "EDGE DIAGNOSE F U: RubiksCube oder Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+    StopAllCoroutines();
+    StartCoroutine(RunEdgeDiagnoseFUCoroutine());
+}
+
+
+private IEnumerator RunEdgeDiagnoseFUCoroutine()
+{
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START EDGE DIAGNOSE: F -> U"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    PrintAllEdgesDetailed("START");
+
+
+    Debug.Log(
+        "----------------------------------------"
+    );
+
+    Debug.Log(
+        "EDGE DIAGNOSE: F ausführen"
+    );
+
+    yield return ExecuteAndWait("F");
+
+    PrintAllEdgesDetailed("NACH F");
+
+
+    Debug.Log(
+        "----------------------------------------"
+    );
+
+    Debug.Log(
+        "EDGE DIAGNOSE: U ausführen"
+    );
+
+    yield return ExecuteAndWait("U");
+
+    PrintAllEdgesDetailed("NACH F U");
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "EDGE DIAGNOSE F U BEENDET"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+}
+
+
+// ======================================================
+// ALLE EDGES DETAILLIERT AUSGEBEN
+// ======================================================
+
+private void PrintAllEdgesDetailed(
+    string label)
+{
+    int edgeCount = 0;
+    int orientationSum = 0;
+
+
+    Debug.Log(
+        "========== " +
+        label +
+        " =========="
+    );
+
+
+    foreach (
+        Cubie cubie
+        in rubiksCube.cubies
+    )
+    {
+        if (
+            cubie == null ||
+            cubie.Type != CubieType.Edge
+        )
+        {
+            continue;
+        }
+
+
+        edgeCount++;
+        orientationSum += cubie.orientation;
+
+
+        string stickerText = "";
+
+
+        foreach (
+            CubieSticker sticker
+            in cubie.stickers
+        )
+        {
+            if (stickerText.Length > 0)
+            {
+                stickerText += " | ";
+            }
+
+
+            stickerText +=
+                sticker.originalDirection +
+                " -> " +
+                sticker.currentDirection;
+        }
+
+
+        Debug.Log(
+            "EDGE " +
+            cubie.pieceID +
+            " | Pos=" +
+            cubie.logicalPosition +
+            " | Ori=" +
+            cubie.orientation +
+            " | Stickers: " +
+            stickerText
+        );
+    }
+
+
+    Debug.Log(
+        label +
+        " | Edge-Anzahl=" +
+        edgeCount +
+        " | Orientation-Summe=" +
+        orientationSum +
+        " | Parität=" +
+        (
+            orientationSum % 2 == 0
+                ? "GERADE / OK"
+                : "UNGERADE / FEHLER"
+        )
+    );
+}
+
 }
