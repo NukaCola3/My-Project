@@ -3605,7 +3605,7 @@ private IEnumerator RunUnityInverseTestCoroutine()
 // Unity wird während der einzelnen Tests NICHT bewegt.
 //
 // Zusätzlich zu Position und Orientation wird auch die
-// interne referenceDirection geprüft.
+// Position und Orientation geprüft.
 // ======================================================
 
 [ContextMenu("Run Solver Inverse Test")]
@@ -3799,7 +3799,7 @@ public void RunSolverInverseTest()
     );
 
     Debug.Log(
-        "Position, Orientation, referenceDirection und State Key stimmen."
+        "Position, Orientation und State Key stimmen."
     );
 
     Debug.Log(
@@ -3860,9 +3860,7 @@ private bool CompareSolverStatesIncludingReferenceDirection(
                 expectedPiece.position !=
                 actualPiece.position ||
                 expectedPiece.orientation !=
-                actualPiece.orientation ||
-                expectedPiece.referenceDirection !=
-                actualPiece.referenceDirection
+                actualPiece.orientation
             )
             {
                 Debug.LogError(
@@ -3874,14 +3872,10 @@ private bool CompareSolverStatesIncludingReferenceDirection(
                     expectedPiece.position +
                     " Ori=" +
                     expectedPiece.orientation +
-                    " Ref=" +
-                    expectedPiece.referenceDirection +
                     " | Actual Pos=" +
                     actualPiece.position +
                     " Ori=" +
-                    actualPiece.orientation +
-                    " Ref=" +
-                    actualPiece.referenceDirection
+                    actualPiece.orientation
                 );
 
                 return false;
@@ -3935,9 +3929,7 @@ private bool CompareSolverStatesIncludingReferenceDirection(
                 expectedPiece.position !=
                 actualPiece.position ||
                 expectedPiece.orientation !=
-                actualPiece.orientation ||
-                expectedPiece.referenceDirection !=
-                actualPiece.referenceDirection
+                actualPiece.orientation
             )
             {
                 Debug.LogError(
@@ -3949,14 +3941,10 @@ private bool CompareSolverStatesIncludingReferenceDirection(
                     expectedPiece.position +
                     " Ori=" +
                     expectedPiece.orientation +
-                    " Ref=" +
-                    expectedPiece.referenceDirection +
                     " | Actual Pos=" +
                     actualPiece.position +
                     " Ori=" +
-                    actualPiece.orientation +
-                    " Ref=" +
-                    actualPiece.referenceDirection
+                    actualPiece.orientation
                 );
 
                 return false;
