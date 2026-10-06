@@ -540,11 +540,11 @@ public void UpdateOrientation()
     switch (Type)
     {
         case CubieType.Corner:
-            UpdateCornerOrientationFromStickers();
+            // Corner-Orientation wird beim Move inkrementell aktualisiert.
             break;
 
         case CubieType.Edge:
-            UpdateEdgeOrientationFromStickers();
+            // Edge-Orientation wird beim Move gezielt aktualisiert.
             break;
 
         case CubieType.Center:
@@ -572,6 +572,70 @@ public void UpdateOrientation()
 //
 // Dadurch wird die Orientation vollständig aus dem
 // realen Stickerzustand rekonstruiert.
+// ==================================================
+
+public void UpdateCornerOrientationForMove(
+    RotationAxis axis,
+    int direction,
+    Vector3Int oldPosition)
+{
+    if (Type != CubieType.Corner)
+    {
+        return;
+    }
+
+    // U/D verändern den Corner-Twist nicht.
+    if (axis == RotationAxis.Y)
+    {
+        return;
+    }
+
+    int delta = 0;
+
+    // Die Vorzeichen werden aus der Position VOR dem Zug bestimmt.
+    // Dadurch erhalten die vier Corners eines R/L/F/B-Zugs
+    // paarweise +1 / +2 und die Summe bleibt mod 3 invariant.
+    if (axis == RotationAxis.X)
+    {
+        bool sameSign =
+            oldPosition.y == oldPosition.z;
+
+        delta =
+            sameSign
+                ? 1
+                : 2;
+    }
+    else if (axis == RotationAxis.Z)
+    {
+        bool sameSign =
+            oldPosition.x == oldPosition.y;
+
+        delta =
+            sameSign
+                ? 2
+                : 1;
+    }
+
+    // Bei der inversen Drehung muss die Twist-Richtung ebenfalls
+    // invertiert werden.
+    if (direction < 0 && delta != 0)
+    {
+        delta =
+            delta == 1
+                ? 2
+                : 1;
+    }
+
+    orientation =
+        (orientation + delta) % 3;
+}
+
+
+// ==================================================
+// CORNER ORIENTATION AUS STICKERN
+// ==================================================
+//
+// Nur noch als Diagnose-/Hilfslogik vorhanden.
 // ==================================================
 
 private void UpdateCornerOrientationFromStickers()
@@ -685,6 +749,32 @@ private void UpdateCornerOrientationFromStickers()
 // Hat sie keinen U/D-Sticker:
 //     F/B-Sticker auf Z -> 0
 //     sonst             -> 1
+// ==================================================
+
+public void UpdateEdgeOrientationForMove(
+    RotationAxis axis)
+{
+    if (Type != CubieType.Edge)
+    {
+        return;
+    }
+
+    // F/B (Z-Achse) flippen Edges.
+    // U/D (Y) und R/L (X) verändern die Edge-Orientation nicht.
+    if (axis == RotationAxis.Z)
+    {
+        orientation = 1 - orientation;
+    }
+}
+
+
+// ==================================================
+// EDGE ORIENTATION AUS STICKERN
+// ==================================================
+//
+// Nur noch als Diagnose-/Hilfslogik vorhanden.
+// Die laufende Move-Orientation wird nicht mehr daraus
+// rekonstruiert.
 // ==================================================
 
 private void UpdateEdgeOrientationFromStickers()

@@ -4161,4 +4161,161 @@ private void PrintAllEdgesDetailed(
     );
 }
 
+
+// ======================================================
+// CORNER ORIENTATION DIAGNOSE: START -> R -> U -> R'
+// ======================================================
+//
+// Führt gezielt R, U und danach R' in Unity aus.
+// Nach jedem Schritt werden alle 8 Corners mit
+// Position, Orientation und Sticker-Richtungen ausgegeben.
+//
+// Dieser Test verändert den Unity-Würfel.
+// Am besten aus gelöstem Zustand starten.
+// ======================================================
+
+[ContextMenu("Run Corner Diagnose R U R'")]
+public void RunCornerDiagnoseRURPrime()
+{
+    if (
+        rubiksCube == null ||
+        rubiksCube.cubies == null
+    )
+    {
+        Debug.LogError(
+            "CORNER DIAGNOSE R U R': RubiksCube oder Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+    StopAllCoroutines();
+    StartCoroutine(RunCornerDiagnoseRURPrimeCoroutine());
+}
+
+
+private IEnumerator RunCornerDiagnoseRURPrimeCoroutine()
+{
+    Debug.Log("========================================");
+    Debug.Log("START CORNER DIAGNOSE: R -> U -> R'");
+    Debug.Log("========================================");
+
+    PrintAllCornersDetailed("START");
+
+    Debug.Log("----------------------------------------");
+    Debug.Log("CORNER DIAGNOSE: R ausführen");
+    yield return ExecuteAndWait("R");
+    PrintAllCornersDetailed("NACH R");
+
+    Debug.Log("----------------------------------------");
+    Debug.Log("CORNER DIAGNOSE: U ausführen");
+    yield return ExecuteAndWait("U");
+    PrintAllCornersDetailed("NACH R U");
+
+    Debug.Log("----------------------------------------");
+    Debug.Log("CORNER DIAGNOSE: R' ausführen");
+    yield return ExecuteAndWait("R'");
+    PrintAllCornersDetailed("NACH R U R'");
+
+    Debug.Log("========================================");
+    Debug.Log("CORNER DIAGNOSE R U R' BEENDET");
+    Debug.Log("========================================");
+}
+
+
+// ======================================================
+// ALLE CORNERS DETAILLIERT AUSGEBEN
+// ======================================================
+
+private void PrintAllCornersDetailed(
+    string label)
+{
+    int cornerCount = 0;
+    int orientationSum = 0;
+
+    Debug.Log(
+        "========== " +
+        label +
+        " =========="
+    );
+
+    foreach (
+        Cubie cubie
+        in rubiksCube.cubies
+    )
+    {
+        if (
+            cubie == null ||
+            cubie.Type != CubieType.Corner
+        )
+        {
+            continue;
+        }
+
+        cornerCount++;
+        orientationSum += cubie.orientation;
+
+        string stickerText = "";
+        string referenceText = "NICHT GEFUNDEN";
+
+        foreach (
+            CubieSticker sticker
+            in cubie.stickers
+        )
+        {
+            if (stickerText.Length > 0)
+            {
+                stickerText += " | ";
+            }
+
+            stickerText +=
+                sticker.originalDirection +
+                " -> " +
+                sticker.currentDirection;
+
+            if (
+                sticker.originalDirection ==
+                    FaceDirection.PositiveY ||
+                sticker.originalDirection ==
+                    FaceDirection.NegativeY
+            )
+            {
+                referenceText =
+                    sticker.originalDirection +
+                    " -> " +
+                    sticker.currentDirection;
+            }
+        }
+
+        Debug.Log(
+            "CORNER " +
+            cubie.pieceID +
+            " | Pos=" +
+            cubie.logicalPosition +
+            " | Ori=" +
+            cubie.orientation +
+            " | UD-Ref=" +
+            referenceText +
+            " | Stickers: " +
+            stickerText
+        );
+    }
+
+    Debug.Log(
+        label +
+        " | Corner-Anzahl=" +
+        cornerCount +
+        " | Orientation-Summe=" +
+        orientationSum +
+        " | Mod3=" +
+        (orientationSum % 3) +
+        " | " +
+        (
+            orientationSum % 3 == 0
+                ? "OK"
+                : "FEHLER"
+        )
+    );
+}
+
 }

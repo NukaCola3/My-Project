@@ -1032,6 +1032,41 @@ public class RubiksCube : MonoBehaviour
                 axis,
                 direction
             );
+
+
+            // ------------------------------------------
+            // CORNER-ORIENTATION
+            // ------------------------------------------
+            //
+            // oldPosition ist bewusst die Position VOR dem Zug.
+            //
+            if (cubie.Type == CubieType.Corner)
+            {
+                cubie.UpdateCornerOrientationForMove(
+                    axis,
+                    direction,
+                    oldPosition
+                );
+            }
+
+
+            // ------------------------------------------
+            // EDGE-ORIENTATION
+            // ------------------------------------------
+            //
+            // Corners werden weiterhin nach der Rotation
+            // über UpdateOrientation() aus ihren Stickern
+            // bestimmt.
+            //
+            // Edges verwenden die Solver-Konvention:
+            // F/B (Z-Achse) flippt, U/D/R/L nicht.
+            //
+            if (cubie.Type == CubieType.Edge)
+            {
+                cubie.UpdateEdgeOrientationForMove(
+                    axis
+                );
+            }
         }
     }
 

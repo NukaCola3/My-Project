@@ -921,13 +921,41 @@ public class SolverState
                     direction
                 );
 
-            // Orientation erst NACH der gedrehten Referenzrichtung
-            // neu bestimmen – genau wie auf der Unity-Seite.
+            // Corner-Orientation inkrementell aktualisieren.
+            // Exakt dieselbe Konvention wie auf der Unity-Seite.
+            int delta = 0;
+
+            if (axis == RotationAxis.X)
+            {
+                bool sameSign =
+                    oldPosition.y == oldPosition.z;
+
+                delta =
+                    sameSign
+                        ? 1
+                        : 2;
+            }
+            else if (axis == RotationAxis.Z)
+            {
+                bool sameSign =
+                    oldPosition.x == oldPosition.y;
+
+                delta =
+                    sameSign
+                        ? 2
+                        : 1;
+            }
+
+            if (direction < 0 && delta != 0)
+            {
+                delta =
+                    delta == 1
+                        ? 2
+                        : 1;
+            }
+
             corner.orientation =
-                GetCornerOrientation(
-                    corner.pieceID,
-                    corner.referenceDirection
-                );
+                (corner.orientation + delta) % 3;
 
             corners[i] =
                 corner;
@@ -979,11 +1007,14 @@ public class SolverState
                     direction
                 );
 
-            edge.orientation =
-                GetEdgeOrientation(
-                    edge.pieceID,
-                    edge.referenceDirection
-                );
+            // Edge-Orientation exakt wie auf der Unity-Seite:
+            // Nur F/B-Züge (Z-Achse) flippen die betroffenen Edges.
+            // U/D (Y) und R/L (X) verändern die Orientation nicht.
+            if (axis == RotationAxis.Z)
+            {
+                edge.orientation =
+                    1 - edge.orientation;
+            }
 
             edges[i] =
                 edge;
