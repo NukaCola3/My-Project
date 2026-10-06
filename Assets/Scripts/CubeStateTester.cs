@@ -4305,5 +4305,898 @@ private void PrintAllCornersDetailed(
         )
     );
 }
+// ======================================================
+// CUBE SOLVER PHASE 1 TEST
+// ======================================================
 
+[ContextMenu("Run Cube Solver Test")]
+public void RunCubeSolverTest()
+{
+    if (rubiksCube == null)
+    {
+        Debug.LogError(
+            "CUBE SOLVER TEST: RubiksCube fehlt."
+        );
+
+        return;
+    }
+
+
+    if (rubiksCube.cubies == null)
+    {
+        Debug.LogError(
+            "CUBE SOLVER TEST: Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START CUBE SOLVER TEST"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    // ==================================================
+    // AKTUELLEN UNITY-ZUSTAND KOPIEREN
+    // ==================================================
+
+    SolverState startState =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    // ==================================================
+    // STATE VALIDIEREN
+    // ==================================================
+
+    if (!startState.IsValid())
+    {
+        Debug.LogError(
+            "CUBE SOLVER TEST: StartState ist ungültig."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "StartState gültig: OK"
+    );
+
+
+    // ==================================================
+    // SOLVED CHECK
+    // ==================================================
+
+    bool alreadySolved =
+        CubeSolver.IsSolved(
+            startState
+        );
+
+
+    Debug.Log(
+        "CubeSolver.IsSolved(): " +
+        alreadySolved
+    );
+
+
+    // ==================================================
+    // SOLVER STARTEN
+    // ==================================================
+
+    int maxDepth = 5;
+
+
+    Debug.Log(
+        "Starte Solver mit MaxDepth " +
+        maxDepth
+    );
+
+
+    List<string> solution =
+        CubeSolver.Solve(
+            startState,
+            maxDepth
+        );
+
+
+    // ==================================================
+    // ERGEBNIS
+    // ==================================================
+
+    if (solution == null)
+    {
+        Debug.LogError(
+            "CUBE SOLVER TEST: " +
+            "Keine Lösung gefunden."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "CUBE SOLVER TEST ERFOLGREICH"
+    );
+
+
+    Debug.Log(
+        "Länge: " +
+        solution.Count
+    );
+
+
+    Debug.Log(
+        "Lösung: " +
+        string.Join(
+            " ",
+            solution
+        )
+    );
+
+
+    Debug.Log(
+        "========================================"
+    );
+}
+// ======================================================
+// R U R' SOLVER DIAGNOSE
+// ======================================================
+//
+// Vorbereitung:
+//
+// Unity-Würfel manuell:
+//
+// R U R'
+//
+// Danach diesen Test starten.
+//
+// Der mathematisch korrekte inverse Weg ist:
+//
+// R U' R'
+//
+// Denn:
+//
+// (R U R')^-1
+// = R U' R'
+//
+// ======================================================
+
+[ContextMenu("Diagnose Solver R U R'")]
+public void DiagnoseSolverRURPrime()
+{
+    if (rubiksCube == null)
+    {
+        Debug.LogError(
+            "DIAGNOSE: RubiksCube fehlt."
+        );
+
+        return;
+    }
+
+
+    if (rubiksCube.cubies == null)
+    {
+        Debug.LogError(
+            "DIAGNOSE: Cubie-Liste fehlt."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "START DIAGNOSE R U R'"
+    );
+
+    Debug.Log(
+        "========================================"
+    );
+
+
+    // ==================================================
+    // 1. AKTUELLEN UNITY-ZUSTAND ÜBERNEHMEN
+    // ==================================================
+
+    SolverState state =
+        new SolverState(
+            rubiksCube.cubies
+        );
+
+
+    if (!state.IsValid())
+    {
+        Debug.LogError(
+            "DIAGNOSE: StartState ist ungültig."
+        );
+
+        return;
+    }
+
+
+    Debug.Log(
+        "StartState gültig: OK"
+    );
+
+    PrintCornerOrientationDiagnosis(
+        state,
+        "START NACH UNITY R U R'"
+    );
+
+
+    // ==================================================
+    // 2. DER START DARF NICHT GELÖST SEIN
+    // ==================================================
+
+    bool solvedAtStart =
+        CubeSolver.IsSolved(
+            state
+        );
+
+
+    Debug.Log(
+        "START | IsSolved = " +
+        solvedAtStart
+    );
+
+
+    if (solvedAtStart)
+    {
+        Debug.LogError(
+            "DIAGNOSE FEHLER: " +
+            "R U R' wird bereits als gelöst erkannt."
+        );
+
+        return;
+    }
+
+
+    // ==================================================
+    // 3. CLONE ERZEUGEN
+    // ==================================================
+
+    SolverState testState =
+        state.Clone();
+
+
+    // ==================================================
+    // 4. ERSTER INVERSE MOVE: R
+    // ==================================================
+
+    Debug.Log(
+        "----------------------------------------"
+    );
+
+    Debug.Log(
+        "DIAGNOSE MOVE 1: R"
+    );
+
+
+    if (!testState.ApplyMove("R"))
+    {
+        Debug.LogError(
+            "DIAGNOSE: R konnte nicht ausgeführt werden."
+        );
+
+        return;
+    }
+
+
+    if (!testState.IsValid())
+    {
+        Debug.LogError(
+            "DIAGNOSE: State nach R ungültig."
+        );
+
+        testState.Print();
+
+        return;
+    }
+
+
+    PrintCornerOrientationDiagnosis(
+        testState,
+        "NACH SOLVER R"
+    );
+
+    Debug.Log(
+        "Nach R | IsSolved = " +
+        CubeSolver.IsSolved(
+            testState
+        )
+    );
+
+
+    // ==================================================
+    // 5. ZWEITER INVERSE MOVE: U'
+    // ==================================================
+
+    Debug.Log(
+        "----------------------------------------"
+    );
+
+    Debug.Log(
+        "DIAGNOSE MOVE 2: U'"
+    );
+
+
+    if (!testState.ApplyMove("U'"))
+    {
+        Debug.LogError(
+            "DIAGNOSE: U' konnte nicht ausgeführt werden."
+        );
+
+        return;
+    }
+
+
+    if (!testState.IsValid())
+    {
+        Debug.LogError(
+            "DIAGNOSE: State nach R U' ungültig."
+        );
+
+        testState.Print();
+
+        return;
+    }
+
+
+    PrintCornerOrientationDiagnosis(
+        testState,
+        "NACH SOLVER R U'"
+    );
+
+    Debug.Log(
+        "Nach R U' | IsSolved = " +
+        CubeSolver.IsSolved(
+            testState
+        )
+    );
+
+
+    // ==================================================
+    // 6. DRITTER INVERSE MOVE: R'
+    // ==================================================
+
+    Debug.Log(
+        "----------------------------------------"
+    );
+
+    Debug.Log(
+        "DIAGNOSE MOVE 3: R'"
+    );
+
+
+    if (!testState.ApplyMove("R'"))
+    {
+        Debug.LogError(
+            "DIAGNOSE: R' konnte nicht ausgeführt werden."
+        );
+
+        return;
+    }
+
+
+    if (!testState.IsValid())
+    {
+        Debug.LogError(
+            "DIAGNOSE: State nach kompletter " +
+            "Inverse-Sequenz ungültig."
+        );
+
+        testState.Print();
+
+        return;
+    }
+
+
+    PrintCornerOrientationDiagnosis(
+        testState,
+        "NACH SOLVER R U' R'"
+    );
+
+    bool solvedAtEnd =
+        CubeSolver.IsSolved(
+            testState
+        );
+
+
+    Debug.Log(
+        "========================================"
+    );
+
+    Debug.Log(
+        "NACH R U' R' | IsSolved = " +
+        solvedAtEnd
+    );
+
+
+    // ==================================================
+    // 7. ENDRESULTAT
+    // ==================================================
+
+    if (solvedAtEnd)
+    {
+        Debug.Log(
+            "DIAGNOSE BESTANDEN"
+        );
+
+        Debug.Log(
+            "Die direkte inverse Sequenz " +
+            "führt korrekt zum Solved-State."
+        );
+    }
+    else
+    {
+        Debug.LogError(
+            "DIAGNOSE FEHLGESCHLAGEN"
+        );
+
+        Debug.LogError(
+            "R U' R' führt laut CubeSolver " +
+            "NICHT zum Solved-State."
+        );
+
+
+        // ==============================================
+        // Zustand vollständig ausgeben
+        // ==============================================
+
+        testState.Print();
+
+
+        // ==============================================
+        // Abweichungen vom erwarteten Solved-State
+        // ==============================================
+
+        PrintSolverSolvedDifferences(
+            testState
+        );
+    }
+
+
+    Debug.Log(
+        "========================================"
+    );
+}
+// ======================================================
+// CORNER ORIENTATION DIAGNOSE
+// ======================================================
+//
+// Gibt alle Corners kompakt aus:
+//
+// PieceID | Position | Orientation
+//
+// Dadurch können wir verfolgen, wie sich die
+// Corner-Orientations bei jedem einzelnen Move ändern.
+//
+// ======================================================
+
+private void PrintCornerOrientationDiagnosis(
+    SolverState state,
+    string label)
+{
+    Debug.Log(
+        "========== " +
+        label +
+        " =========="
+    );
+
+
+    foreach (
+        SolverPieceState corner
+        in state.corners)
+    {
+        Debug.Log(
+            "CORNER " +
+            corner.pieceID +
+            " | Pos=" +
+            corner.position +
+            " | Ori=" +
+            corner.orientation
+        );
+    }
+
+
+    int orientationSum = 0;
+
+
+    foreach (
+        SolverPieceState corner
+        in state.corners)
+    {
+        orientationSum +=
+            corner.orientation;
+    }
+
+
+    Debug.Log(
+        "Corner Orientation Sum = " +
+        orientationSum +
+        " | Mod3 = " +
+        (orientationSum % 3)
+    );
+
+
+    Debug.Log(
+        "========================================"
+    );
+}
+
+// ======================================================
+// SOLVED-STATE DIFFERENCES
+// ======================================================
+//
+// Gibt alle Pieces aus, die nach dem Diagnose-Test
+// nicht an ihrer erwarteten Position / Orientation sind.
+//
+// ======================================================
+
+private void PrintSolverSolvedDifferences(
+    SolverState state)
+{
+    Debug.LogError(
+        "========== SOLVED DIFFERENCES =========="
+    );
+
+
+    // ==================================================
+    // CORNERS
+    // ==================================================
+
+    foreach (
+        SolverPieceState corner
+        in state.corners)
+    {
+        Vector3Int expectedPosition;
+
+        bool known =
+            TryGetExpectedCornerPositionForDiagnosis(
+                corner.pieceID,
+                out expectedPosition
+            );
+
+
+        if (!known)
+        {
+            Debug.LogError(
+                "Unbekannte Corner-ID: " +
+                corner.pieceID
+            );
+
+            continue;
+        }
+
+
+        if (
+            corner.position != expectedPosition ||
+            corner.orientation != 0)
+        {
+            Debug.LogError(
+                "CORNER " +
+                corner.pieceID +
+                " | Position=" +
+                corner.position +
+                " | Erwartet=" +
+                expectedPosition +
+                " | Ori=" +
+                corner.orientation +
+                " | Erwartet Ori=0"
+            );
+        }
+    }
+
+
+    // ==================================================
+    // EDGES
+    // ==================================================
+
+    foreach (
+        SolverPieceState edge
+        in state.edges)
+    {
+        Vector3Int expectedPosition;
+
+        bool known =
+            TryGetExpectedEdgePositionForDiagnosis(
+                edge.pieceID,
+                out expectedPosition
+            );
+
+
+        if (!known)
+        {
+            Debug.LogError(
+                "Unbekannte Edge-ID: " +
+                edge.pieceID
+            );
+
+            continue;
+        }
+
+
+        if (
+            edge.position != expectedPosition ||
+            edge.orientation != 0)
+        {
+            Debug.LogError(
+                "EDGE " +
+                edge.pieceID +
+                " | Position=" +
+                edge.position +
+                " | Erwartet=" +
+                expectedPosition +
+                " | Ori=" +
+                edge.orientation +
+                " | Erwartet Ori=0"
+            );
+        }
+    }
+
+
+    Debug.LogError(
+        "========================================"
+    );
+}
+
+
+// ======================================================
+// EXPECTED CORNER POSITIONS
+// ======================================================
+
+private bool TryGetExpectedCornerPositionForDiagnosis(
+    string pieceID,
+    out Vector3Int position)
+{
+    switch (pieceID)
+    {
+        case "URF":
+            position = new Vector3Int(1, 1, 1);
+            return true;
+
+        case "URB":
+            position = new Vector3Int(1, 1, -1);
+            return true;
+
+        case "ULF":
+            position = new Vector3Int(-1, 1, 1);
+            return true;
+
+        case "ULB":
+            position = new Vector3Int(-1, 1, -1);
+            return true;
+
+        case "DRF":
+            position = new Vector3Int(1, -1, 1);
+            return true;
+
+        case "DRB":
+            position = new Vector3Int(1, -1, -1);
+            return true;
+
+        case "DLF":
+            position = new Vector3Int(-1, -1, 1);
+            return true;
+
+        case "DLB":
+            position = new Vector3Int(-1, -1, -1);
+            return true;
+    }
+
+
+    position = Vector3Int.zero;
+
+    return false;
+}
+
+
+// ======================================================
+// EXPECTED EDGE POSITIONS
+// ======================================================
+
+private bool TryGetExpectedEdgePositionForDiagnosis(
+    string pieceID,
+    out Vector3Int position)
+{
+    switch (pieceID)
+    {
+        case "UF":
+            position = new Vector3Int(0, 1, 1);
+            return true;
+
+        case "UR":
+            position = new Vector3Int(1, 1, 0);
+            return true;
+
+        case "UB":
+            position = new Vector3Int(0, 1, -1);
+            return true;
+
+        case "UL":
+            position = new Vector3Int(-1, 1, 0);
+            return true;
+
+        case "DF":
+            position = new Vector3Int(0, -1, 1);
+            return true;
+
+        case "DR":
+            position = new Vector3Int(1, -1, 0);
+            return true;
+
+        case "DB":
+            position = new Vector3Int(0, -1, -1);
+            return true;
+
+        case "DL":
+            position = new Vector3Int(-1, -1, 0);
+            return true;
+
+        case "RF":
+            position = new Vector3Int(1, 0, 1);
+            return true;
+
+        case "LF":
+            position = new Vector3Int(-1, 0, 1);
+            return true;
+
+        case "RB":
+            position = new Vector3Int(1, 0, -1);
+            return true;
+
+        case "LB":
+            position = new Vector3Int(-1, 0, -1);
+            return true;
+    }
+
+
+    position = Vector3Int.zero;
+
+    return false;
+}
+
+// ======================================================
+// CORNER INVERSE ORIENTATION REGRESSION
+// ======================================================
+[ContextMenu("Run Corner Inverse Orientation Regression")]
+public void RunCornerInverseOrientationRegression()
+{
+    if (rubiksCube == null || rubiksCube.cubies == null)
+    {
+        Debug.LogError("CORNER INVERSE TEST: RubiksCube/Cubies fehlen.");
+        return;
+    }
+
+    SolverState baseline = new SolverState(rubiksCube.cubies);
+    if (!baseline.IsValid())
+    {
+        Debug.LogError("CORNER INVERSE TEST: Ausgangszustand ungültig.");
+        return;
+    }
+
+    string[,] tests =
+    {
+        { "R",  "R'" }, { "R'", "R" },
+        { "L",  "L'" }, { "L'", "L" },
+        { "F",  "F'" }, { "F'", "F" },
+        { "B",  "B'" }, { "B'", "B" }
+    };
+
+    int failedTests = 0;
+    Debug.Log("========================================");
+    Debug.Log("START CORNER INVERSE ORIENTATION REGRESSION");
+    Debug.Log("========================================");
+
+    for (int i = 0; i < tests.GetLength(0); i++)
+    {
+        string firstMove = tests[i, 0];
+        string inverseMove = tests[i, 1];
+        SolverState testState = baseline.Clone();
+
+        Debug.Log("----------------------------------------");
+        Debug.Log("TEST: " + firstMove + " " + inverseMove);
+
+        if (!testState.ApplyMove(firstMove))
+        {
+            Debug.LogError("Move fehlgeschlagen: " + firstMove);
+            failedTests++;
+            continue;
+        }
+
+        PrintCornerOrientationDiagnosis(testState, "NACH " + firstMove);
+
+        if (!testState.ApplyMove(inverseMove))
+        {
+            Debug.LogError("Move fehlgeschlagen: " + inverseMove);
+            failedTests++;
+            continue;
+        }
+
+        PrintCornerOrientationDiagnosis(
+            testState,
+            "NACH " + firstMove + " " + inverseMove
+        );
+
+        bool passed = CompareCornerStateWithBaseline(
+            baseline,
+            testState,
+            firstMove + " " + inverseMove
+        );
+
+        if (passed)
+        {
+            Debug.Log("PASS: " + firstMove + " " + inverseMove);
+        }
+        else
+        {
+            failedTests++;
+            Debug.LogError("FAIL: " + firstMove + " " + inverseMove);
+        }
+    }
+
+    Debug.Log("========================================");
+    if (failedTests == 0)
+        Debug.Log("CORNER INVERSE ORIENTATION REGRESSION BESTANDEN");
+    else
+        Debug.LogError("CORNER INVERSE ORIENTATION REGRESSION FEHLGESCHLAGEN | Fehlgeschlagene Tests: " + failedTests);
+    Debug.Log("========================================");
+}
+
+private bool CompareCornerStateWithBaseline(
+    SolverState baseline,
+    SolverState testState,
+    string label)
+{
+    bool passed = true;
+
+    foreach (SolverPieceState expected in baseline.corners)
+    {
+        bool found = false;
+        foreach (SolverPieceState actual in testState.corners)
+        {
+            if (actual.pieceID != expected.pieceID)
+                continue;
+
+            found = true;
+            if (actual.position != expected.position ||
+                actual.orientation != expected.orientation)
+            {
+                passed = false;
+                Debug.LogError(
+                    "CORNER ABWEICHUNG [" + label + "] " + expected.pieceID +
+                    " | Pos=" + actual.position + " erwartet=" + expected.position +
+                    " | Ori=" + actual.orientation + " erwartet=" + expected.orientation
+                );
+            }
+            break;
+        }
+
+        if (!found)
+        {
+            passed = false;
+            Debug.LogError("CORNER FEHLT [" + label + "]: " + expected.pieceID);
+        }
+    }
+
+    return passed;
+}
 }
