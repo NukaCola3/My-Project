@@ -5199,4 +5199,315 @@ private bool CompareCornerStateWithBaseline(
 
     return passed;
 }
+
+// ======================================================
+// AUTOMATIC CUBE SOLVER SCRAMBLE TEST
+// Uses independent copies; the Unity cube is not moved.
+// ======================================================
+[Header("Cube Solver Scramble Test")]
+public string[] solverScrambleSequences =
+{
+    "R U R'", "F R U", "L D B'",
+    "R U R' U'", "F R U B'", "L D F' R",
+    "R U F L D", "F R U R' U'", "B' L D F R'"
+};
+
+[Header("Additional 6-Move Solver Tests")]
+public string[] solverSixMoveSequences =
+{
+    "R U F L D B", "F R U R' U' F'", "B' L D F R' U"
+};
+
+[Header("Visible Unity Solver Test")]
+public string unitySolverScramble = "R U R'";
+
+private bool solverScrambleTestRunning;
+
+[ContextMenu("Run Cube Solver Scramble Tests")]
+public void RunCubeSolverScrambleTests()
+{
+    if (!Application.isPlaying || rubiksCube == null || rubiksCube.cubies == null)
+    {
+        Debug.LogError("SOLVER SCRAMBLE TEST: Im Play-Modus starten; RubiksCube/Cubies müssen vorhanden sein.");
+        return;
+    }
+    if (solverScrambleTestRunning || rubiksCube.IsCurrentlyRotating())
+    {
+        Debug.LogWarning("SOLVER SCRAMBLE TEST: Ein Test oder eine Drehung läuft bereits.");
+        return;
+    }
+    SolverState baseline = new SolverState(rubiksCube.cubies);
+    if (!baseline.IsValid() || !CubeSolver.IsSolved(baseline))
+    {
+        Debug.LogError("SOLVER SCRAMBLE TEST: Bitte mit einem gültigen, gelösten Würfel starten.");
+        return;
+    }
+    if (solverScrambleSequences == null || solverScrambleSequences.Length == 0)
+    {
+        Debug.LogError("SOLVER SCRAMBLE TEST: Keine Sequenzen eingestellt.");
+        return;
+    }
+    StartCoroutine(RunCubeSolverScrambleTestsCoroutine(baseline));
+}
+
+private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
+{
+    solverScrambleTestRunning = true;
+    int passed = 0, failed = 0;
+    int[] passedByLength = new int[7];
+    int[] failedByLength = new int[7];
+    double totalSeconds = 0;
+    long totalNodes = 0;
+    int casesWithNodes = 0;
+    var report = new System.Text.StringBuilder();
+    Debug.Log("START CUBE SOLVER SCRAMBLE TESTS | Unity-Würfel bleibt unverändert.");
+    try
+    {
+        // Snapshot Inspector settings for a reproducible run.
+        var sequenceList = new List<string>(solverScrambleSequences);
+        if (solverSixMoveSequences != null)
+            sequenceList.AddRange(solverSixMoveSequences);
+        string[] sequences = sequenceList.ToArray();
+        foreach (string sequence in sequences)
+        {
+            yield return null;
+            string[] moves = (sequence ?? "").Split(
+                new[] { ' ', '\t', '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+            if (moves.Length < 3 || moves.Length > 6)
+            {
+                failed++;
+                report.AppendLine("FAIL | Ungültige Sequenz (erwartet 3–6 Züge): " + sequence);
+                continue;
+            }
+            SolverState scrambled = baseline.Clone();
+            bool valid = true;
+            foreach (string move in moves)
+            {
+                // Quarter turns only: scramble length equals the depth bound.
+                if (!IsSolverScrambleQuarterTurn(move) || !scrambled.ApplyMove(move) || !scrambled.IsValid())
+                {
+                    valid = false;
+                    break;
+                }
+            }
+            if (!valid)
+            {
+                failed++;
+                failedByLength[moves.Length]++;
+                report.AppendLine("FAIL | Scramble ungültig: " + sequence);
+                continue;
+            }
+            Debug.Log("SOLVER SCRAMBLE FALL: " + sequence + " | MaxDepth=" + moves.Length);
+            long nodes = -1;
+            // Existing CubeSolver reports its node count through Debug.Log.
+            // Capture that report without depending on an additional solver API.
+            Application.LogCallback captureNodes = (message, stackTrace, type) =>
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(
+                    message, @"Untersuchte Zustände\s*:\s*([0-9.,\s]+)");
+                if (!match.Success) return;
+                string digits = System.Text.RegularExpressions.Regex.Replace(match.Groups[1].Value, @"\D", "");
+                long parsed;
+                if (long.TryParse(digits, out parsed)) nodes = parsed;
+            };
+            List<string> solution = null;
+            string error = null;
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            Application.logMessageReceived += captureNodes;
+            try
+            {
+                solution = CubeSolver.Solve(scrambled.Clone(), moves.Length);
+            }
+            catch (System.Exception exception)
+            {
+                error = exception.GetType().Name + ": " + exception.Message;
+            }
+            finally
+            {
+                Application.logMessageReceived -= captureNodes;
+                timer.Stop();
+            }
+            totalSeconds += timer.Elapsed.TotalSeconds;
+            if (nodes >= 0) { totalNodes += nodes; casesWithNodes++; }
+            bool solved = solution != null && solution.Count <= moves.Length;
+            SolverState verification = scrambled.Clone();
+            if (solved)
+            {
+                foreach (string move in solution)
+                {
+                    if (!verification.ApplyMove(move) || !verification.IsValid())
+                    {
+                        solved = false;
+                        break;
+                    }
+                }
+                solved = solved && CubeSolver.IsSolved(verification);
+            }
+            string result = (solved ? "PASS" : "FAIL") + " | Scramble=" + sequence +
+                " | Lösung=" + (solution == null ? "keine" : string.Join(" ", solution)) +
+                " | Lösungslänge=" + (solution == null ? "–" : solution.Count.ToString()) +
+                " | MaxDepth=" + moves.Length +
+                " | Untersuchte Zustände=" + (nodes < 0 ? "nicht im Solver-Log verfügbar" : nodes.ToString()) +
+                " | Suche=" + timer.Elapsed.TotalSeconds.ToString("F3") + " s" +
+                (error == null ? "" : " | Ausnahme=" + error);
+            report.AppendLine(result);
+            if (solved)
+            {
+                passed++; passedByLength[moves.Length]++;
+                Debug.Log(result);
+            }
+            else
+            {
+                failed++; failedByLength[moves.Length]++;
+                Debug.LogError(result);
+            }
+        }
+        report.AppendLine("GESAMT | Bestanden=" + passed + " | Fehlgeschlagen=" + failed);
+        for (int length = 3; length <= 6; length++)
+            report.AppendLine(length + " Züge | Bestanden=" + passedByLength[length] +
+                " | Fehlgeschlagen=" + failedByLength[length]);
+        report.AppendLine("Suchdauer gesamt=" + totalSeconds.ToString("F3") +
+            " s | Erfasste Zustände=" + totalNodes + " (" + casesWithNodes + " Fälle)");
+        if (failed == 0)
+            Debug.Log("CUBE SOLVER SCRAMBLE TESTS BESTANDEN\n" + report);
+        else
+            Debug.LogError("CUBE SOLVER SCRAMBLE TESTS FEHLGESCHLAGEN\n" + report);
+    }
+    finally
+    {
+        solverScrambleTestRunning = false;
+    }
+}
+
+private static bool IsSolverScrambleQuarterTurn(string move)
+{
+    return move == "R" || move == "R'" || move == "L" || move == "L'" ||
+        move == "U" || move == "U'" || move == "D" || move == "D'" ||
+        move == "F" || move == "F'" || move == "B" || move == "B'";
+}
+
+
+// Executes one scramble and its verified solution on the visible cube.
+[ContextMenu("Run Unity Cube Solver Execution Test")]
+public void RunUnityCubeSolverExecutionTest()
+{
+    if (!Application.isPlaying || rubiksCube == null || rubiksCube.cubies == null)
+    {
+        Debug.LogError("UNITY SOLVER TEST: Im Play-Modus mit RubiksCube/Cubies starten.");
+        return;
+    }
+    if (solverScrambleTestRunning || rubiksCube.IsCurrentlyRotating())
+    {
+        Debug.LogWarning("UNITY SOLVER TEST: Ein Test oder eine Drehung läuft bereits.");
+        return;
+    }
+    SolverState baseline = new SolverState(rubiksCube.cubies);
+    if (!baseline.IsValid() || !CubeSolver.IsSolved(baseline))
+    {
+        Debug.LogError("UNITY SOLVER TEST: Bitte mit gültigem, gelöstem Würfel starten.");
+        return;
+    }
+    string[] moves = (unitySolverScramble ?? "").Split(
+        new[] { ' ', '\t', '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+    if (moves.Length < 3 || moves.Length > 6)
+    {
+        Debug.LogError("UNITY SOLVER TEST: Scramble muss 3–6 Vierteldrehungen enthalten.");
+        return;
+    }
+    foreach (string move in moves)
+    {
+        if (!IsSolverScrambleQuarterTurn(move))
+        {
+            Debug.LogError("UNITY SOLVER TEST: Unbekannte Vierteldrehung: " + move);
+            return;
+        }
+    }
+    StartCoroutine(RunUnityCubeSolverExecutionTestCoroutine(baseline, moves));
+}
+
+private IEnumerator RunUnityCubeSolverExecutionTestCoroutine(SolverState baseline, string[] moves)
+{
+    solverScrambleTestRunning = true;
+    try
+    {
+        Debug.Log("START UNITY SOLVER EXECUTION TEST | Scramble=" + string.Join(" ", moves));
+        simulatedSolverState = baseline.Clone();
+        foreach (string move in moves)
+        {
+            yield return ExecuteAndWait(move);
+            if (!simulatedSolverState.ApplyMove(move) ||
+                !simulatedSolverState.IsValid() || !ValidateState() ||
+                !CompareUnityWithSimulatedSolver("UNITY SOLVER SCRAMBLE | " + move))
+            {
+                Debug.LogError("UNITY SOLVER EXECUTION TEST FEHLGESCHLAGEN beim Scramble: " + move);
+                yield break;
+            }
+        }
+        SolverState scrambled = simulatedSolverState.Clone();
+        List<string> solution = null;
+        string error = null;
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            solution = CubeSolver.Solve(scrambled.Clone(), moves.Length);
+        }
+        catch (System.Exception exception)
+        {
+            error = exception.GetType().Name + ": " + exception.Message;
+        }
+        finally
+        {
+            timer.Stop();
+        }
+        if (solution == null || solution.Count > moves.Length)
+        {
+            Debug.LogError("UNITY SOLVER EXECUTION TEST FEHLGESCHLAGEN: Keine Lösung innerhalb MaxDepth=" +
+                moves.Length + (error == null ? "" : " | " + error));
+            yield break;
+        }
+        // Verify the entire solution before moving the visible cube.
+        SolverState verification = scrambled.Clone();
+        foreach (string move in solution)
+        {
+            if (!IsSolverScrambleQuarterTurn(move) || !verification.ApplyMove(move) || !verification.IsValid())
+            {
+                Debug.LogError("UNITY SOLVER EXECUTION TEST FEHLGESCHLAGEN: Lösung enthält ungültigen Zug: " + move);
+                yield break;
+            }
+        }
+        if (!CubeSolver.IsSolved(verification))
+        {
+            Debug.LogError("UNITY SOLVER EXECUTION TEST FEHLGESCHLAGEN: Lösung löst Zustandskopie nicht.");
+            yield break;
+        }
+        Debug.Log("UNITY SOLVER: Führe Lösung aus: " + string.Join(" ", solution));
+        foreach (string move in solution)
+        {
+            yield return ExecuteAndWait(move);
+            if (!simulatedSolverState.ApplyMove(move) ||
+                !simulatedSolverState.IsValid() || !ValidateState() ||
+                !CompareUnityWithSimulatedSolver("UNITY SOLVER LÖSUNG | " + move))
+            {
+                Debug.LogError("UNITY SOLVER EXECUTION TEST FEHLGESCHLAGEN bei Lösung: " + move);
+                yield break;
+            }
+        }
+        SolverState finalUnityState = new SolverState(rubiksCube.cubies);
+        if (!finalUnityState.IsValid() || !CubeSolver.IsSolved(finalUnityState) ||
+            !CubeSolver.IsSolved(simulatedSolverState))
+        {
+            Debug.LogError("UNITY SOLVER EXECUTION TEST FEHLGESCHLAGEN: Endzustand nicht gelöst.");
+            yield break;
+        }
+        Debug.Log("UNITY SOLVER EXECUTION TEST BESTANDEN | Scramble=" + string.Join(" ", moves) +
+            " | Lösung=" + string.Join(" ", solution) + " | Lösungslänge=" + solution.Count +
+            " | Suche=" + timer.Elapsed.TotalSeconds.ToString("F3") +
+            " s | Unity und Solver nach jedem Zug identisch; Endzustand gelöst.");
+    }
+    finally
+    {
+        solverScrambleTestRunning = false;
+    }
+}
+
 }

@@ -23,7 +23,7 @@ using UnityEngine;
 // Dieser Solver ist absichtlich noch NICHT für große
 // Scrambles gedacht.
 //
-// Verwendet wird zunächst Breadth-First Search (BFS).
+// Verwendet wird bidirektionale Breadth-First Search (BFS).
 //
 // ==========================================================
 
@@ -51,26 +51,25 @@ public static class CubeSolver
     // Ein Knoten enthält:
     //
     // - einen Würfelzustand
-    // - den bisher verwendeten Move-Pfad
+    // - Vorgänger, letzten Move und Tiefe (Pfad erst am Ende)
     //
     // ======================================================
 
-    private class SearchNode
+    private sealed class SearchNode
     {
-        public SolverState state;
+        public readonly SolverState state;
+        public readonly SearchNode parent;
+        public readonly string move;
+        public readonly int depth;
 
-        public List<string> path;
-
-
-        public SearchNode(
-            SolverState state,
-            List<string> path)
+        public SearchNode(SolverState state, SearchNode parent, string move)
         {
             this.state = state;
-            this.path = path;
+            this.parent = parent;
+            this.move = move;
+            depth = parent == null ? 0 : parent.depth + 1;
         }
     }
-
 
     // ======================================================
     // SOLVED STATE
@@ -183,258 +182,128 @@ public static class CubeSolver
     //
     // ======================================================
 
-    public static List<string> Solve(
-        SolverState startState,
-        int maxDepth = 5)
+    public static List<string> Solve(SolverState startState, int maxDepth = 5)
     {
-        if (startState == null)
+        if (startState == null || !startState.IsValid())
         {
-            Debug.LogError(
-                "CubeSolver: StartState ist null."
-            );
-
+            Debug.LogError("CubeSolver: StartState fehlt oder ist ungültig.");
             return null;
         }
-
-
-        if (!startState.IsValid())
+        if (maxDepth < 0)
         {
-            Debug.LogError(
-                "CubeSolver: StartState ist ungültig."
-            );
-
+            Debug.LogError("CubeSolver: MaxDepth darf nicht negativ sein.");
             return null;
         }
-
-
-        // ==================================================
-        // BEREITS GELÖST?
-        // ==================================================
-
         if (IsSolved(startState))
         {
-            Debug.Log(
-                "CubeSolver: Würfel ist bereits gelöst."
-            );
-
+            Debug.Log("CubeSolver: Würfel ist bereits gelöst. Untersuchte Zustände: 0");
             return new List<string>();
         }
 
-
-        // ==================================================
-        // BFS INITIALISIEREN
-        // ==================================================
-
-        Queue<SearchNode> queue =
-            new Queue<SearchNode>();
-
-
-        HashSet<string> visited =
-            new HashSet<string>();
-
-
-        SolverState startClone =
-            startState.Clone();
-
-
-        queue.Enqueue(
-            new SearchNode(
-                startClone,
-                new List<string>()
-            )
-        );
-
-
-        visited.Add(
-            startClone.GetStateKey()
-        );
-
-
-        int expandedStates = 0;
-
-
-        // ==================================================
-        // BFS
-        // ==================================================
-
-        while (queue.Count > 0)
+        // Build the goal on a clone, preserving piece IDs and collection order.
+        // No changes are made to the supplied state or to Unity cubies.
+        SolverState goal = startState.Clone();
+        for (int i = 0; i < goal.corners.Count; i++)
         {
-            SearchNode current =
-                queue.Dequeue();
-
-
-            expandedStates++;
-
-
-            // ==============================================
-            // MAX DEPTH
-            // ==============================================
-
-            if (current.path.Count >= maxDepth)
-            {
-                continue;
-            }
-
-
-            // ==============================================
-            // ALLE MOVES TESTEN
-            // ==============================================
-
-            foreach (string move in Moves)
-            {
-                // ------------------------------------------
-                // Kleines Pruning:
-                //
-                // Direkten Gegenmove nicht erzeugen.
-                //
-                // Beispiel:
-                //
-                // R -> R'
-                //
-                // würde sofort wieder zum vorherigen
-                // Zustand führen.
-                // ------------------------------------------
-
-                if (
-                    current.path.Count > 0 &&
-                    AreInverseMoves(
-                        current.path[
-                            current.path.Count - 1
-                        ],
-                        move
-                    ))
-                {
-                    continue;
-                }
-
-
-                // ------------------------------------------
-                // Zustand klonen
-                // ------------------------------------------
-
-                SolverState nextState =
-                    current.state.Clone();
-
-
-                // ------------------------------------------
-                // Move anwenden
-                // ------------------------------------------
-
-                bool moveApplied =
-                    nextState.ApplyMove(
-                        move
-                    );
-
-
-                if (!moveApplied)
-                {
-                    continue;
-                }
-
-
-                // ------------------------------------------
-                // STATE KEY
-                // ------------------------------------------
-
-                string key =
-                    nextState.GetStateKey();
-
-
-                // ------------------------------------------
-                // Bereits besucht?
-                // ------------------------------------------
-
-                if (!visited.Add(key))
-                {
-                    continue;
-                }
-
-
-                // ------------------------------------------
-                // Neuen Pfad erzeugen
-                // ------------------------------------------
-
-                List<string> nextPath =
-                    new List<string>(
-                        current.path
-                    );
-
-
-                nextPath.Add(
-                    move
-                );
-
-
-                // ------------------------------------------
-                // GELÖST?
-                // ------------------------------------------
-
-                if (IsSolved(nextState))
-                {
-                    Debug.Log(
-                        "========================================"
-                    );
-
-                    Debug.Log(
-                        "CUBE SOLVER: LÖSUNG GEFUNDEN"
-                    );
-
-                    Debug.Log(
-                        "Tiefe: " +
-                        nextPath.Count
-                    );
-
-                    Debug.Log(
-                        "Untersuchte Zustände: " +
-                        expandedStates
-                    );
-
-                    Debug.Log(
-                        "Lösung: " +
-                        string.Join(
-                            " ",
-                            nextPath
-                        )
-                    );
-
-                    Debug.Log(
-                        "========================================"
-                    );
-
-
-                    return nextPath;
-                }
-
-
-                // ------------------------------------------
-                // Weiter durchsuchen
-                // ------------------------------------------
-
-                queue.Enqueue(
-                    new SearchNode(
-                        nextState,
-                        nextPath
-                    )
-                );
-            }
+            SolverPieceState piece = goal.corners[i];
+            Vector3Int position;
+            if (!TryGetSolvedCornerPosition(piece.pieceID, out position)) return null;
+            piece.position = position;
+            piece.orientation = 0;
+            goal.corners[i] = piece;
+        }
+        for (int i = 0; i < goal.edges.Count; i++)
+        {
+            SolverPieceState piece = goal.edges[i];
+            Vector3Int position;
+            if (!TryGetSolvedEdgePosition(piece.pieceID, out position)) return null;
+            piece.position = position;
+            piece.orientation = 0;
+            goal.edges[i] = piece;
+        }
+        if (!goal.IsValid() || !IsSolved(goal))
+        {
+            Debug.LogError("CubeSolver: Gelöster Zielzustand konnte nicht erzeugt werden.");
+            return null;
         }
 
+        var startNode = new SearchNode(startState.Clone(), null, null);
+        var goalNode = new SearchNode(goal, null, null);
+        var forwardVisited = new Dictionary<string, SearchNode>();
+        var backwardVisited = new Dictionary<string, SearchNode>();
+        forwardVisited.Add(startNode.state.GetStateKey(), startNode);
+        backwardVisited.Add(goal.GetStateKey(), goalNode);
+        var forwardFrontier = new List<SearchNode> { startNode };
+        var backwardFrontier = new List<SearchNode> { goalNode };
+        int forwardDepth = 0, backwardDepth = 0;
+        long expandedStates = 0;
 
-        // ==================================================
-        // KEINE LÖSUNG
-        // ==================================================
-
-        Debug.LogWarning(
-            "CubeSolver: Keine Lösung bis Tiefe " +
-            maxDepth +
-            " gefunden. Untersuchte Zustände: " +
-            expandedStates
-        );
-
-
+        // Each frontier contains one complete BFS layer. If the two visited
+        // balls do not intersect, no solution within their summed radii exists.
+        // Expanding the smaller layer then finds a shortest quarter-turn path.
+        while (forwardFrontier.Count > 0 && backwardFrontier.Count > 0 &&
+            forwardDepth + backwardDepth < maxDepth)
+        {
+            bool forward = forwardFrontier.Count <= backwardFrontier.Count;
+            List<SearchNode> frontier = forward ? forwardFrontier : backwardFrontier;
+            Dictionary<string, SearchNode> own = forward ? forwardVisited : backwardVisited;
+            Dictionary<string, SearchNode> other = forward ? backwardVisited : forwardVisited;
+            var nextFrontier = new List<SearchNode>();
+            foreach (SearchNode current in frontier)
+            {
+                expandedStates++;
+                foreach (string move in Moves)
+                {
+                    if (current.move != null && AreInverseMoves(current.move, move))
+                        continue;
+                    SolverState nextState = current.state.Clone();
+                    if (!nextState.ApplyMove(move)) continue;
+                    string key = nextState.GetStateKey();
+                    if (own.ContainsKey(key)) continue;
+                    var next = new SearchNode(nextState, current, move);
+                    own.Add(key, next);
+                    SearchNode meeting;
+                    if (other.TryGetValue(key, out meeting))
+                    {
+                        List<string> solution = BuildSolution(
+                            forward ? next : meeting, forward ? meeting : next);
+                        Debug.Log("CUBE SOLVER: LÖSUNG GEFUNDEN");
+                        Debug.Log("Tiefe: " + solution.Count);
+                        Debug.Log("Untersuchte Zustände: " + expandedStates);
+                        Debug.Log("Lösung: " + string.Join(" ", solution));
+                        return solution;
+                    }
+                    nextFrontier.Add(next);
+                }
+            }
+            if (forward)
+            {
+                forwardFrontier = nextFrontier;
+                forwardDepth++;
+            }
+            else
+            {
+                backwardFrontier = nextFrontier;
+                backwardDepth++;
+            }
+        }
+        Debug.LogWarning("CubeSolver: Keine Lösung bis Tiefe " + maxDepth +
+            " gefunden. Untersuchte Zustände: " + expandedStates);
         return null;
     }
 
+    private static List<string> BuildSolution(SearchNode forward, SearchNode backward)
+    {
+        var solution = new List<string>();
+        for (SearchNode node = forward; node.parent != null; node = node.parent)
+            solution.Add(node.move);
+        solution.Reverse();
+        // The backward tree points from the goal to the meeting state.
+        // Walking toward its root requires inverse moves, in reverse order.
+        for (SearchNode node = backward; node.parent != null; node = node.parent)
+            solution.Add(GetInverseMove(node.move));
+        return solution;
+    }
 
     // ======================================================
     // INVERSE MOVES
