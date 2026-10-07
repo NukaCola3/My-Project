@@ -76,7 +76,9 @@ public class RubiksCube : MonoBehaviour
     public bool IsInputLocked => isRotating || isSolving || isScrambling;
 
     [Header("Solver")]
-    [Range(0, 8)] public int solverMaxDepth = 8;
+    [Range(0, 10)] public int solverMaxDepth = 8;
+    [Min(0.01f)] public float solverTimeLimitSeconds = 5f;
+    [Min(2)] public int solverStoredStateLimit = 500000;
     [Min(0f)] public float solverMovePause = 0.05f;
 
     private GameObject rotationPivot;
@@ -1215,15 +1217,20 @@ public class RubiksCube : MonoBehaviour
                 Debug.Log("SOLVER: Würfel ist bereits gelöst.");
                 yield break;
             }
-            int depth = Mathf.Clamp(solverMaxDepth, 0, 8);
+            int depth = Mathf.Clamp(solverMaxDepth, 0, 10);
             List<string> solution = null;
             string error = null;
-            try { solution = CubeSolver.Solve(start.Clone(), depth); }
+            CubeSolver.SearchStatus searchStatus = CubeSolver.SearchStatus.InvalidInput;
+            try { solution = CubeSolver.Solve(start.Clone(), depth,
+                solverTimeLimitSeconds, solverStoredStateLimit, out searchStatus); }
             catch (System.Exception exception) { error = exception.GetType().Name + ": " + exception.Message; }
             if (solution == null)
             {
-                Debug.LogWarning("SOLVER: Keine Lösung bis Tiefe " + depth +
-                    (error == null ? "." : " | " + error));
+                string reason = searchStatus == CubeSolver.SearchStatus.TimeLimit ? "Zeitlimit erreicht" :
+                    searchStatus == CubeSolver.SearchStatus.StateLimit ? "Zustandslimit erreicht" :
+                    searchStatus == CubeSolver.SearchStatus.DepthLimit ? "Keine Lösung bis Tiefe " + depth :
+                    "Suche konnte nicht ausgeführt werden";
+                Debug.LogWarning("SOLVER: " + reason + (error == null ? "." : " | " + error));
                 yield break;
             }
             // Validate the entire plan before executing any Unity rotation.

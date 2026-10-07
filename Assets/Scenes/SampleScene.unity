@@ -3377,6 +3377,10 @@ MonoBehaviour:
   cubies: []
   rotationSpeed: 180
   scrambleLength: 20
+  solverMaxDepth: 10
+  solverTimeLimitSeconds: 5
+  solverStoredStateLimit: 500000
+  solverMovePause: 0.05
 --- !u!114 &349917131
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3446,7 +3450,18 @@ MonoBehaviour:
   - R U F L D B R' U'
   - F R U R' U' F' L D
   - B' L D F R' U B L'
+  solverNineMoveSequences:
+  - R U F L D B R' U' F'
+  - F R U R' U' F' L D B
+  - B' L D F R' U B L' D'
+  solverTenMoveSequences:
+  - R U F L D B R' U' F' L'
+  - F R U R' U' F' L D B R
+  - B' L D F R' U B L' D' F'
   unitySolverScramble: R U R'
+  solverRandomSeed: 20261007
+  solverRandomCaseCount: 12
+  solverRandomMaxMoves: 8
 --- !u!1 &350437676
 GameObject:
   m_ObjectHideFlags: 0

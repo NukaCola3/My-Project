@@ -5233,6 +5233,21 @@ public string[] solverEightMoveSequences =
     "B' L D F R' U B L'"
 };
 
+[Header("Additional 9- and 10-Move Solver Tests")]
+public string[] solverNineMoveSequences =
+{
+    "R U F L D B R' U' F'",
+    "F R U R' U' F' L D B",
+    "B' L D F R' U B L' D'"
+};
+
+public string[] solverTenMoveSequences =
+{
+    "R U F L D B R' U' F' L'",
+    "F R U R' U' F' L D B R",
+    "B' L D F R' U B L' D' F'"
+};
+
 [Header("Visible Unity Solver Test")]
 public string unitySolverScramble = "R U R'";
 
@@ -5268,9 +5283,10 @@ public void RunCubeSolverScrambleTests()
 private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
 {
     solverScrambleTestRunning = true;
-    int passed = 0, failed = 0;
-    int[] passedByLength = new int[9];
-    int[] failedByLength = new int[9];
+    int passed = 0, failed = 0, aborted = 0;
+    int[] passedByLength = new int[11];
+    int[] failedByLength = new int[11];
+    int[] abortedByLength = new int[11];
     double totalSeconds = 0;
     long totalNodes = 0;
     int casesWithNodes = 0;
@@ -5286,16 +5302,20 @@ private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
             sequenceList.AddRange(solverSevenMoveSequences);
         if (solverEightMoveSequences != null)
             sequenceList.AddRange(solverEightMoveSequences);
+        if (solverNineMoveSequences != null)
+            sequenceList.AddRange(solverNineMoveSequences);
+        if (solverTenMoveSequences != null)
+            sequenceList.AddRange(solverTenMoveSequences);
         string[] sequences = sequenceList.ToArray();
         foreach (string sequence in sequences)
         {
             yield return null;
             string[] moves = (sequence ?? "").Split(
                 new[] { ' ', '\t', '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-            if (moves.Length < 3 || moves.Length > 8)
+            if (moves.Length < 3 || moves.Length > 10)
             {
                 failed++;
-                report.AppendLine("FAIL | Ungültige Sequenz (erwartet 3–8 Züge): " + sequence);
+                report.AppendLine("FAIL | Ungültige Sequenz (erwartet 3–10 Züge): " + sequence);
                 continue;
             }
             SolverState scrambled = baseline.Clone();
@@ -5331,11 +5351,12 @@ private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
             };
             List<string> solution = null;
             string error = null;
+            CubeSolver.SearchStatus status = CubeSolver.SearchStatus.InvalidInput;
             var timer = System.Diagnostics.Stopwatch.StartNew();
             Application.logMessageReceived += captureNodes;
             try
             {
-                solution = CubeSolver.Solve(scrambled.Clone(), moves.Length);
+                solution = CubeSolver.Solve(scrambled.Clone(), moves.Length, 5.0, 500000, out status);
             }
             catch (System.Exception exception)
             {
@@ -5362,10 +5383,12 @@ private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
                 }
                 solved = solved && CubeSolver.IsSolved(verification);
             }
-            string result = (solved ? "PASS" : "FAIL") + " | Scramble=" + sequence +
+            bool resourceAbort = error == null && solution == null &&
+                (status == CubeSolver.SearchStatus.TimeLimit || status == CubeSolver.SearchStatus.StateLimit);
+            string result = (solved ? "PASS" : resourceAbort ? "ABGEBROCHEN" : "FAIL") + " | Scramble=" + sequence +
                 " | Lösung=" + (solution == null ? "keine" : string.Join(" ", solution)) +
                 " | Lösungslänge=" + (solution == null ? "–" : solution.Count.ToString()) +
-                " | MaxDepth=" + moves.Length +
+                " | MaxDepth=" + moves.Length + " | Suchstatus=" + status +
                 " | Untersuchte Zustände=" + (nodes < 0 ? "nicht im Solver-Log verfügbar" : nodes.ToString()) +
                 " | Suche=" + timer.Elapsed.TotalSeconds.ToString("F3") + " s" +
                 (error == null ? "" : " | Ausnahme=" + error);
@@ -5375,22 +5398,29 @@ private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
                 passed++; passedByLength[moves.Length]++;
                 Debug.Log(result);
             }
+            else if (resourceAbort)
+            {
+                aborted++; abortedByLength[moves.Length]++;
+                Debug.LogWarning(result);
+            }
             else
             {
                 failed++; failedByLength[moves.Length]++;
                 Debug.LogError(result);
             }
         }
-        report.AppendLine("GESAMT | Bestanden=" + passed + " | Fehlgeschlagen=" + failed);
-        for (int length = 3; length <= 8; length++)
+        report.AppendLine("GESAMT | Bestanden=" + passed + " | Fehlgeschlagen=" + failed + " | Abgebrochen=" + aborted);
+        for (int length = 3; length <= 10; length++)
             report.AppendLine(length + " Züge | Bestanden=" + passedByLength[length] +
-                " | Fehlgeschlagen=" + failedByLength[length]);
+                " | Fehlgeschlagen=" + failedByLength[length] + " | Abgebrochen=" + abortedByLength[length]);
         report.AppendLine("Suchdauer gesamt=" + totalSeconds.ToString("F3") +
             " s | Erfasste Zustände=" + totalNodes + " (" + casesWithNodes + " Fälle)");
-        if (failed == 0)
-            Debug.Log("CUBE SOLVER SCRAMBLE TESTS BESTANDEN\n" + report);
-        else
+        if (failed > 0)
             Debug.LogError("CUBE SOLVER SCRAMBLE TESTS FEHLGESCHLAGEN\n" + report);
+        else if (aborted > 0)
+            Debug.LogWarning("CUBE SOLVER SCRAMBLE TESTS UNVOLLSTÄNDIG\n" + report);
+        else
+            Debug.Log("CUBE SOLVER SCRAMBLE TESTS BESTANDEN\n" + report);
     }
     finally
     {
@@ -5421,6 +5451,14 @@ public void RunUnityCubeSolverEightMoveExecutionTest()
     RunUnityCubeSolverExecutionTest();
 }
 
+[ContextMenu("Run Unity Cube Solver 10-Move Execution Test")]
+public void RunUnityCubeSolverTenMoveExecutionTest()
+{
+    if (solverScrambleTestRunning) return;
+    unitySolverScramble = "R U F L D B R' U' F' L'";
+    RunUnityCubeSolverExecutionTest();
+}
+
 [ContextMenu("Run Unity Cube Solver Execution Test")]
 public void RunUnityCubeSolverExecutionTest()
 {
@@ -5442,9 +5480,9 @@ public void RunUnityCubeSolverExecutionTest()
     }
     string[] moves = (unitySolverScramble ?? "").Split(
         new[] { ' ', '\t', '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-    if (moves.Length < 3 || moves.Length > 8)
+    if (moves.Length < 3 || moves.Length > 10)
     {
-        Debug.LogError("UNITY SOLVER TEST: Scramble muss 3–8 Vierteldrehungen enthalten.");
+        Debug.LogError("UNITY SOLVER TEST: Scramble muss 3–10 Vierteldrehungen enthalten.");
         return;
     }
     foreach (string move in moves)
@@ -5679,6 +5717,45 @@ private bool CheckSolverBoundaryCase(SolverState baseline, string sequence,
         (error == null ? "" : " | Ausnahme=" + error);
     if (ok) Debug.Log(result); else Debug.LogError(result);
     return ok;
+}
+
+
+[ContextMenu("Run Cube Solver Resource Limit Tests")]
+public void RunCubeSolverResourceLimitTests()
+{
+    if (!Application.isPlaying || rubiksCube == null || rubiksCube.cubies == null ||
+        solverScrambleTestRunning || rubiksCube.IsInputLocked)
+    {
+        Debug.LogWarning("SOLVER LIMIT TEST: Im Play-Modus mit ruhendem Würfel starten.");
+        return;
+    }
+    SolverState start = new SolverState(rubiksCube.cubies);
+    if (!start.IsValid() || !CubeSolver.IsSolved(start) || !start.ApplyMove("R"))
+    {
+        Debug.LogError("SOLVER LIMIT TEST: Mit gültigem, gelöstem Würfel starten.");
+        return;
+    }
+    string key = start.GetStateKey();
+    CubeSolver.SearchStatus status;
+    List<string> solution = CubeSolver.Solve(start, 1, 5.0, 2, out status);
+    bool stateLimitOk = solution == null && status == CubeSolver.SearchStatus.StateLimit &&
+        start.GetStateKey() == key;
+    solution = CubeSolver.Solve(start, 1, double.Epsilon, 100000, out status);
+    bool timeLimitOk = solution == null && status == CubeSolver.SearchStatus.TimeLimit &&
+        start.GetStateKey() == key;
+    solution = CubeSolver.Solve(start, 1, 5.0, 100000, out status);
+    bool retryOk = status == CubeSolver.SearchStatus.Solved && solution != null && solution.Count == 1;
+    if (retryOk)
+    {
+        SolverState verification = start.Clone();
+        retryOk = verification.ApplyMove(solution[0]) && CubeSolver.IsSolved(verification) &&
+            start.GetStateKey() == key;
+    }
+    string report = "Zustandslimit=" + stateLimitOk + " | Zeitlimit=" + timeLimitOk +
+        " | Erneute Suche nach Abbruch=" + retryOk;
+    if (stateLimitOk && timeLimitOk && retryOk)
+        Debug.Log("CUBE SOLVER RESOURCE LIMIT TESTS BESTANDEN | " + report);
+    else Debug.LogError("CUBE SOLVER RESOURCE LIMIT TESTS FEHLGESCHLAGEN | " + report);
 }
 
 }

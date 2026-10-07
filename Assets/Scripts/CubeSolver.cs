@@ -50,21 +50,21 @@ public static class CubeSolver
     //
     // Ein Knoten enthält:
     //
-    // - einen Würfelzustand
+    // - einen kompakten Zustandsschlüssel
     // - Vorgänger, letzten Move und Tiefe (Pfad erst am Ende)
     //
     // ======================================================
 
     private sealed class SearchNode
     {
-        public readonly SolverState state;
+        public readonly string key;
         public readonly SearchNode parent;
         public readonly string move;
         public readonly int depth;
 
-        public SearchNode(SolverState state, SearchNode parent, string move)
+        public SearchNode(string key, SearchNode parent, string move)
         {
-            this.state = state;
+            this.key = key;
             this.parent = parent;
             this.move = move;
             depth = parent == null ? 0 : parent.depth + 1;
@@ -182,8 +182,29 @@ public static class CubeSolver
     //
     // ======================================================
 
+    public enum SearchStatus
+    {
+        Solved, DepthLimit, TimeLimit, StateLimit, InvalidInput
+    }
+
+    // Existing callers keep the same API, with bounded resource use.
     public static List<string> Solve(SolverState startState, int maxDepth = 5)
     {
+        SearchStatus status;
+        return Solve(startState, maxDepth, 5.0, 500000, out status);
+    }
+
+    public static List<string> Solve(SolverState startState, int maxDepth,
+        double maxSearchSeconds, int maxStoredStates, out SearchStatus status)
+    {
+        status = SearchStatus.InvalidInput;
+        if (maxSearchSeconds <= 0 || double.IsNaN(maxSearchSeconds) ||
+            double.IsInfinity(maxSearchSeconds) || maxStoredStates < 2)
+        {
+            Debug.LogError("CubeSolver: Ungültiges Zeit- oder Zustandslimit.");
+            return null;
+        }
+        var searchTimer = System.Diagnostics.Stopwatch.StartNew();
         if (startState == null || !startState.IsValid())
         {
             Debug.LogError("CubeSolver: StartState fehlt oder ist ungültig.");
@@ -196,6 +217,7 @@ public static class CubeSolver
         }
         if (IsSolved(startState))
         {
+            status = SearchStatus.Solved;
             Debug.Log("CubeSolver: Würfel ist bereits gelöst. Untersuchte Zustände: 0");
             return new List<string>();
         }
@@ -227,12 +249,29 @@ public static class CubeSolver
             return null;
         }
 
-        var startNode = new SearchNode(startState.Clone(), null, null);
-        var goalNode = new SearchNode(goal, null, null);
+        // One shared workspace, never retained in visited nodes. Lists preserve
+        // the piece-ID order of this search, so each key slot identifies a piece.
+        var keyBuffer = new char[20];
+        if (!HasEncodablePositions(startState))
+        {
+            Debug.LogError("CubeSolver: Piece-Position außerhalb gültiger Corner-/Edge-Plätze.");
+            return null;
+        }
+        string startKey = EncodeState(startState, keyBuffer);
+        string goalKey = EncodeState(goal, keyBuffer);
+        SolverState workspace = startState.Clone();
+        DecodeStateInto(startKey, workspace);
+        if (!workspace.IsSameState(startState))
+        {
+            Debug.LogError("CubeSolver: Kompakter Zustand konnte nicht rekonstruiert werden.");
+            return null;
+        }
+        var startNode = new SearchNode(startKey, null, null);
+        var goalNode = new SearchNode(goalKey, null, null);
         var forwardVisited = new Dictionary<string, SearchNode>();
         var backwardVisited = new Dictionary<string, SearchNode>();
-        forwardVisited.Add(startNode.state.GetStateKey(), startNode);
-        backwardVisited.Add(goal.GetStateKey(), goalNode);
+        forwardVisited.Add(startNode.key, startNode);
+        backwardVisited.Add(goalNode.key, goalNode);
         var forwardFrontier = new List<SearchNode> { startNode };
         var backwardFrontier = new List<SearchNode> { goalNode };
         int forwardDepth = 0, backwardDepth = 0;
@@ -254,19 +293,34 @@ public static class CubeSolver
                 expandedStates++;
                 foreach (string move in Moves)
                 {
+                    if (searchTimer.Elapsed.TotalSeconds >= maxSearchSeconds)
+                    {
+                        status = SearchStatus.TimeLimit;
+                        Debug.LogWarning("CubeSolver: Suche wegen Zeitlimit abgebrochen (" +
+                            maxSearchSeconds + " s). Untersuchte Zustände: " + expandedStates);
+                        return null;
+                    }
                     if (current.move != null && AreInverseMoves(current.move, move))
                         continue;
-                    SolverState nextState = current.state.Clone();
-                    if (!nextState.ApplyMove(move)) continue;
-                    string key = nextState.GetStateKey();
+                    DecodeStateInto(current.key, workspace);
+                    if (!workspace.ApplyMove(move)) continue;
+                    string key = EncodeState(workspace, keyBuffer);
                     if (own.ContainsKey(key)) continue;
-                    var next = new SearchNode(nextState, current, move);
+                    if ((long)forwardVisited.Count + backwardVisited.Count >= maxStoredStates)
+                    {
+                        status = SearchStatus.StateLimit;
+                        Debug.LogWarning("CubeSolver: Suche wegen Zustandslimit abgebrochen (" +
+                            maxStoredStates + "). Untersuchte Zustände: " + expandedStates);
+                        return null;
+                    }
+                    var next = new SearchNode(key, current, move);
                     own.Add(key, next);
                     SearchNode meeting;
                     if (other.TryGetValue(key, out meeting))
                     {
                         List<string> solution = BuildSolution(
                             forward ? next : meeting, forward ? meeting : next);
+                        status = SearchStatus.Solved;
                         Debug.Log("CUBE SOLVER: LÖSUNG GEFUNDEN");
                         Debug.Log("Tiefe: " + solution.Count);
                         Debug.Log("Untersuchte Zustände: " + expandedStates);
@@ -287,9 +341,69 @@ public static class CubeSolver
                 backwardDepth++;
             }
         }
+        status = SearchStatus.DepthLimit;
         Debug.LogWarning("CubeSolver: Keine Lösung bis Tiefe " + maxDepth +
             " gefunden. Untersuchte Zustände: " + expandedStates);
         return null;
+    }
+
+    // Encode 27 coordinate slots times three orientations in one char.
+    // This is a lossless value key, not a hash: dictionary hash collisions
+    // are resolved by full ordinal string equality. IDs are fixed per search.
+    private static string EncodeState(SolverState state, char[] buffer)
+    {
+        for (int i = 0; i < 8; i++) buffer[i] = EncodePiece(state.corners[i]);
+        for (int i = 0; i < 12; i++) buffer[8 + i] = EncodePiece(state.edges[i]);
+        return new string(buffer);
+    }
+
+    private static char EncodePiece(SolverPieceState piece)
+    {
+        Vector3Int p = piece.position;
+        int position = (p.x + 1) * 9 + (p.y + 1) * 3 + p.z + 1;
+        return (char)(position * 3 + piece.orientation);
+    }
+
+    private static void DecodeStateInto(string key, SolverState state)
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            SolverPieceState piece = state.corners[i];
+            DecodePiece(key[i], ref piece);
+            state.corners[i] = piece;
+        }
+        for (int i = 0; i < 12; i++)
+        {
+            SolverPieceState piece = state.edges[i];
+            DecodePiece(key[8 + i], ref piece);
+            state.edges[i] = piece;
+        }
+    }
+
+    private static void DecodePiece(char value, ref SolverPieceState piece)
+    {
+        int position = value / 3;
+        piece.orientation = value % 3;
+        piece.position = new Vector3Int(position / 9 - 1,
+            (position / 3) % 3 - 1, position % 3 - 1);
+    }
+
+    private static bool HasEncodablePositions(SolverState state)
+    {
+        foreach (SolverPieceState corner in state.corners)
+        {
+            Vector3Int p = corner.position;
+            if ((p.x != -1 && p.x != 1) || (p.y != -1 && p.y != 1) ||
+                (p.z != -1 && p.z != 1)) return false;
+        }
+        foreach (SolverPieceState edge in state.edges)
+        {
+            Vector3Int p = edge.position;
+            if (p.x < -1 || p.x > 1 || p.y < -1 || p.y > 1 || p.z < -1 || p.z > 1 ||
+                (p.x == 0 ? 1 : 0) + (p.y == 0 ? 1 : 0) + (p.z == 0 ? 1 : 0) != 1)
+                return false;
+        }
+        return true;
     }
 
     private static List<string> BuildSolution(SearchNode forward, SearchNode backward)
