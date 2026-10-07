@@ -832,14 +832,6 @@ public class SolverState
                         : 1;
             }
 
-            if (direction < 0 && delta != 0)
-            {
-                delta =
-                    delta == 1
-                        ? 2
-                        : 1;
-            }
-
             corner.orientation =
                 (corner.orientation + delta) % 3;
 
