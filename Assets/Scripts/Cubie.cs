@@ -616,16 +616,6 @@ public void UpdateCornerOrientationForMove(
                 : 1;
     }
 
-    // Bei der inversen Drehung muss die Twist-Richtung ebenfalls
-    // invertiert werden.
-    if (direction < 0 && delta != 0)
-    {
-        delta =
-            delta == 1
-                ? 2
-                : 1;
-    }
-
     orientation =
         (orientation + delta) % 3;
 }
