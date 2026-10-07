@@ -47,6 +47,12 @@ public class CubeInput : MonoBehaviour
 
     private void Update()
     {
+        if (rubiksCube != null && rubiksCube.IsInputLocked)
+        {
+            EndMouseDrag();
+            return;
+        }
+
         if (Mouse.current == null)
         {
             return;

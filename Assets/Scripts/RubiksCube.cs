@@ -69,6 +69,15 @@ public class RubiksCube : MonoBehaviour
     // ==================================================
 
     private bool isRotating = false;
+    private bool isSolving = false;
+    private bool isScrambling = false;
+
+    public bool IsSolving => isSolving;
+    public bool IsInputLocked => isRotating || isSolving || isScrambling;
+
+    [Header("Solver")]
+    [Range(0, 8)] public int solverMaxDepth = 8;
+    [Min(0f)] public float solverMovePause = 0.05f;
 
     private GameObject rotationPivot;
 
@@ -95,11 +104,18 @@ public class RubiksCube : MonoBehaviour
 
     private void Update()
     {
-        if (isRotating)
+        if (IsInputLocked)
         {
             return;
         }
 
+
+        if (Keyboard.current == null) return;
+        if (Keyboard.current.enterKey.wasPressedThisFrame)
+        {
+            SolveCube();
+            return;
+        }
 
         // ==================================================
         // U - OBERE EBENE
@@ -255,7 +271,7 @@ public class RubiksCube : MonoBehaviour
 
     private void MakeMove(CubeMove move)
     {
-        if (isRotating)
+        if (IsInputLocked)
         {
             return;
         }
@@ -288,7 +304,7 @@ public class RubiksCube : MonoBehaviour
 
     private void UndoMove()
     {
-        if (isRotating)
+        if (IsInputLocked)
         {
             return;
         }
@@ -343,7 +359,7 @@ public class RubiksCube : MonoBehaviour
 
     private void RedoMove()
     {
-        if (isRotating)
+        if (IsInputLocked)
         {
             return;
         }
@@ -389,14 +405,13 @@ public class RubiksCube : MonoBehaviour
 
     private void StartScramble()
     {
-        if (isRotating)
+        if (IsInputLocked)
         {
             return;
         }
 
-        StartCoroutine(
-            ScrambleCoroutine()
-        );
+        isScrambling = true;
+        StartCoroutine(ScrambleCoroutine());
     }
 
 
@@ -406,6 +421,9 @@ public class RubiksCube : MonoBehaviour
 
     private IEnumerator ScrambleCoroutine()
     {
+        try
+        {
+
         Debug.Log(
             "========== SCRAMBLE =========="
         );
@@ -478,6 +496,11 @@ public class RubiksCube : MonoBehaviour
         Debug.Log(
             "========== SCRAMBLE FERTIG =========="
         );
+            }
+        finally
+        {
+            isScrambling = false;
+        }
     }
 
 
@@ -1151,4 +1174,139 @@ public class RubiksCube : MonoBehaviour
             );
         }
     }
+
+    // UI Button OnClick can call SolveCube(); Enter and the context menu do too.
+    [ContextMenu("Solve Cube")]
+    public void SolveCube()
+    {
+        if (!Application.isPlaying || !isActiveAndEnabled)
+        {
+            Debug.LogWarning("SOLVER: Im Play-Modus mit aktiver RubiksCube-Komponente starten.");
+            return;
+        }
+        if (IsInputLocked)
+        {
+            Debug.LogWarning("SOLVER: Eine Drehung, ein Scramble oder das Lösen läuft bereits.");
+            return;
+        }
+        if (rotationSpeed <= 0f || float.IsNaN(rotationSpeed) || float.IsInfinity(rotationSpeed))
+        {
+            Debug.LogError("SOLVER: Rotation Speed muss positiv und endlich sein.");
+            return;
+        }
+        isSolving = true;
+        StartCoroutine(SolveCubeCoroutine());
+    }
+
+    private IEnumerator SolveCubeCoroutine()
+    {
+        try
+        {
+            // Display the locked state for a frame before synchronous search.
+            yield return null;
+            SolverState start = new SolverState(cubies);
+            if (!start.IsValid())
+            {
+                Debug.LogError("SOLVER: Aktueller Würfelzustand ist ungültig.");
+                yield break;
+            }
+            if (CubeSolver.IsSolved(start))
+            {
+                Debug.Log("SOLVER: Würfel ist bereits gelöst.");
+                yield break;
+            }
+            int depth = Mathf.Clamp(solverMaxDepth, 0, 8);
+            List<string> solution = null;
+            string error = null;
+            try { solution = CubeSolver.Solve(start.Clone(), depth); }
+            catch (System.Exception exception) { error = exception.GetType().Name + ": " + exception.Message; }
+            if (solution == null)
+            {
+                Debug.LogWarning("SOLVER: Keine Lösung bis Tiefe " + depth +
+                    (error == null ? "." : " | " + error));
+                yield break;
+            }
+            // Validate the entire plan before executing any Unity rotation.
+            SolverState expected = start.Clone();
+            var plan = new List<CubeMove>();
+            foreach (string token in solution)
+            {
+                CubeMove move;
+                if (!TryParseSolverMove(token, out move) || !expected.ApplyMove(token) || !expected.IsValid())
+                {
+                    Debug.LogError("SOLVER: Ungültige Lösung; Ausführung abgebrochen.");
+                    yield break;
+                }
+                plan.Add(move);
+            }
+            if (solution.Count > depth || !CubeSolver.IsSolved(expected))
+            {
+                Debug.LogError("SOLVER: Lösung konnte nicht verifiziert werden.");
+                yield break;
+            }
+            expected = start.Clone();
+            Debug.Log("SOLVER: Führe Lösung aus: " + string.Join(" ", solution));
+            for (int i = 0; i < plan.Count; i++)
+            {
+                CubeMove move = plan[i];
+                // Internal execution bypasses the manual-input lock.
+                StartLayerRotation(move.axis, move.layer, move.direction);
+                if (!isRotating)
+                {
+                    Debug.LogError("SOLVER: Drehung konnte nicht gestartet werden.");
+                    yield break;
+                }
+                moveHistory.Add(move);
+                redoHistory.Clear();
+                while (isRotating) yield return null;
+                if (!expected.ApplyMove(solution[i]))
+                {
+                    Debug.LogError("SOLVER: Zustandsfortschreibung fehlgeschlagen.");
+                    yield break;
+                }
+                SolverState actual = new SolverState(cubies);
+                if (!actual.IsValid() || actual.GetStateKey() != expected.GetStateKey())
+                {
+                    Debug.LogError("SOLVER: Unity/Solver-Abweichung nach Zug " + solution[i] + "; gestoppt.");
+                    yield break;
+                }
+                if (solverMovePause > 0f) yield return new WaitForSeconds(solverMovePause);
+            }
+            cubeState.Build(cubies);
+            if (!IsSolved() || !CubeSolver.IsSolved(new SolverState(cubies)))
+            {
+                Debug.LogError("SOLVER: Endzustand nicht vollständig gelöst.");
+                yield break;
+            }
+            Debug.Log("SOLVER: WÜRFEL GELÖST | Züge=" + solution.Count +
+                " | Lösung=" + string.Join(" ", solution));
+        }
+        finally
+        {
+            isSolving = false;
+        }
+    }
+
+    private static bool TryParseSolverMove(string token, out CubeMove move)
+    {
+        move = new CubeMove();
+        if (string.IsNullOrEmpty(token) ||
+            (token.Length != 1 && !(token.Length == 2 && token[1] == '\''))) return false;
+        RotationAxis axis;
+        int layer, direction;
+        switch (token[0])
+        {
+            case 'U': axis = RotationAxis.Y; layer = 1; direction = 1; break;
+            case 'D': axis = RotationAxis.Y; layer = -1; direction = -1; break;
+            case 'R': axis = RotationAxis.X; layer = 1; direction = 1; break;
+            case 'L': axis = RotationAxis.X; layer = -1; direction = -1; break;
+            case 'F': axis = RotationAxis.Z; layer = 1; direction = -1; break;
+            case 'B': axis = RotationAxis.Z; layer = -1; direction = 1; break;
+            default: return false;
+        }
+        if (token.Length == 2) direction = -direction;
+        move = new CubeMove(axis, layer, direction);
+        return true;
+    }
+
 }

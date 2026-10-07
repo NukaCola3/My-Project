@@ -5218,6 +5218,21 @@ public string[] solverSixMoveSequences =
     "R U F L D B", "F R U R' U' F'", "B' L D F R' U"
 };
 
+[Header("Additional 7- and 8-Move Solver Tests")]
+public string[] solverSevenMoveSequences =
+{
+    "R U F L D B R'",
+    "F R U R' U' F' L",
+    "B' L D F R' U B"
+};
+
+public string[] solverEightMoveSequences =
+{
+    "R U F L D B R' U'",
+    "F R U R' U' F' L D",
+    "B' L D F R' U B L'"
+};
+
 [Header("Visible Unity Solver Test")]
 public string unitySolverScramble = "R U R'";
 
@@ -5254,8 +5269,8 @@ private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
 {
     solverScrambleTestRunning = true;
     int passed = 0, failed = 0;
-    int[] passedByLength = new int[7];
-    int[] failedByLength = new int[7];
+    int[] passedByLength = new int[9];
+    int[] failedByLength = new int[9];
     double totalSeconds = 0;
     long totalNodes = 0;
     int casesWithNodes = 0;
@@ -5267,16 +5282,20 @@ private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
         var sequenceList = new List<string>(solverScrambleSequences);
         if (solverSixMoveSequences != null)
             sequenceList.AddRange(solverSixMoveSequences);
+        if (solverSevenMoveSequences != null)
+            sequenceList.AddRange(solverSevenMoveSequences);
+        if (solverEightMoveSequences != null)
+            sequenceList.AddRange(solverEightMoveSequences);
         string[] sequences = sequenceList.ToArray();
         foreach (string sequence in sequences)
         {
             yield return null;
             string[] moves = (sequence ?? "").Split(
                 new[] { ' ', '\t', '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-            if (moves.Length < 3 || moves.Length > 6)
+            if (moves.Length < 3 || moves.Length > 8)
             {
                 failed++;
-                report.AppendLine("FAIL | Ungültige Sequenz (erwartet 3–6 Züge): " + sequence);
+                report.AppendLine("FAIL | Ungültige Sequenz (erwartet 3–8 Züge): " + sequence);
                 continue;
             }
             SolverState scrambled = baseline.Clone();
@@ -5363,7 +5382,7 @@ private IEnumerator RunCubeSolverScrambleTestsCoroutine(SolverState baseline)
             }
         }
         report.AppendLine("GESAMT | Bestanden=" + passed + " | Fehlgeschlagen=" + failed);
-        for (int length = 3; length <= 6; length++)
+        for (int length = 3; length <= 8; length++)
             report.AppendLine(length + " Züge | Bestanden=" + passedByLength[length] +
                 " | Fehlgeschlagen=" + failedByLength[length]);
         report.AppendLine("Suchdauer gesamt=" + totalSeconds.ToString("F3") +
@@ -5388,6 +5407,20 @@ private static bool IsSolverScrambleQuarterTurn(string move)
 
 
 // Executes one scramble and its verified solution on the visible cube.
+// Dedicated entry point also works on existing scenes whose Inspector still
+// stores the earlier three-move default in unitySolverScramble.
+[ContextMenu("Run Unity Cube Solver 8-Move Execution Test")]
+public void RunUnityCubeSolverEightMoveExecutionTest()
+{
+    if (solverScrambleTestRunning)
+    {
+        Debug.LogWarning("UNITY SOLVER TEST: Ein Solver-Test läuft bereits.");
+        return;
+    }
+    unitySolverScramble = "R U F L D B R' U'";
+    RunUnityCubeSolverExecutionTest();
+}
+
 [ContextMenu("Run Unity Cube Solver Execution Test")]
 public void RunUnityCubeSolverExecutionTest()
 {
@@ -5409,9 +5442,9 @@ public void RunUnityCubeSolverExecutionTest()
     }
     string[] moves = (unitySolverScramble ?? "").Split(
         new[] { ' ', '\t', '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-    if (moves.Length < 3 || moves.Length > 6)
+    if (moves.Length < 3 || moves.Length > 8)
     {
-        Debug.LogError("UNITY SOLVER TEST: Scramble muss 3–6 Vierteldrehungen enthalten.");
+        Debug.LogError("UNITY SOLVER TEST: Scramble muss 3–8 Vierteldrehungen enthalten.");
         return;
     }
     foreach (string move in moves)
@@ -5508,6 +5541,144 @@ private IEnumerator RunUnityCubeSolverExecutionTestCoroutine(SolverState baselin
     {
         solverScrambleTestRunning = false;
     }
+}
+
+
+[Header("Solver Boundary and Seeded Random Tests")]
+public int solverRandomSeed = 20261007;
+[Range(1, 100)] public int solverRandomCaseCount = 12;
+[Range(1, 8)] public int solverRandomMaxMoves = 8;
+
+[ContextMenu("Run Cube Solver Boundary And Random Tests")]
+public void RunCubeSolverBoundaryAndRandomTests()
+{
+    if (!Application.isPlaying || rubiksCube == null || rubiksCube.cubies == null)
+    {
+        Debug.LogError("SOLVER BOUNDARY TEST: Im Play-Modus mit RubiksCube/Cubies starten.");
+        return;
+    }
+    if (solverScrambleTestRunning || rubiksCube.IsCurrentlyRotating())
+    {
+        Debug.LogWarning("SOLVER BOUNDARY TEST: Ein Test oder eine Drehung läuft bereits.");
+        return;
+    }
+    SolverState baseline = new SolverState(rubiksCube.cubies);
+    if (!baseline.IsValid() || !CubeSolver.IsSolved(baseline))
+    {
+        Debug.LogError("SOLVER BOUNDARY TEST: Mit gültigem, gelöstem Würfel starten.");
+        return;
+    }
+    StartCoroutine(RunCubeSolverBoundaryAndRandomTestsCoroutine(baseline));
+}
+
+private IEnumerator RunCubeSolverBoundaryAndRandomTestsCoroutine(SolverState baseline)
+{
+    solverScrambleTestRunning = true;
+    int passed = 0, failed = 0;
+    var report = new System.Text.StringBuilder();
+    int seed = solverRandomSeed;
+    int count = Mathf.Clamp(solverRandomCaseCount, 1, 100);
+    int maxMoves = Mathf.Clamp(solverRandomMaxMoves, 1, 8);
+    try
+    {
+        Debug.Log("START SOLVER BOUNDARY AND RANDOM TESTS | Seed=" + seed +
+            " | Zufallsfälle=" + count + " | MaxMoves=" + maxMoves);
+        // Known shortest distances in the quarter-turn metric.
+        string[] sequences = { "", "R", "R", "R R", "R R", "R' R'", "R R R", "R R R R", "R U", "R U", "R R U U" };
+        int[] bounds =       {  0,   0,   1,     1,     2,       2,       1,         0,     1,     2,         4 };
+        int[] expected =     {  0,  -1,   1,    -1,     2,       2,       1,         0,    -1,     2,        -2 };
+        for (int i = 0; i < sequences.Length; i++)
+        {
+            yield return null;
+            string line;
+            bool ok = CheckSolverBoundaryCase(baseline, sequences[i], bounds[i], expected[i], out line);
+            if (ok) passed++; else failed++;
+            report.AppendLine(line);
+        }
+        var random = new System.Random(seed);
+        string[] moves = { "U", "U'", "D", "D'", "R", "R'", "L", "L'", "F", "F'", "B", "B'" };
+        for (int i = 0; i < count; i++)
+        {
+            yield return null;
+            int length = random.Next(1, maxMoves + 1);
+            var scramble = new List<string>();
+            for (int j = 0; j < length; j++)
+            {
+                string move;
+                do { move = moves[random.Next(moves.Length)]; }
+                while (scramble.Count > 0 && move == CubeSolver.GetInverseMove(scramble[scramble.Count - 1]));
+                // Repeated quarter turns remain allowed: important half-turn coverage.
+                scramble.Add(move);
+            }
+            string line;
+            bool ok = CheckSolverBoundaryCase(baseline, string.Join(" ", scramble), length, -2, out line);
+            if (ok) passed++; else failed++;
+            report.AppendLine("Random " + (i + 1) + " | " + line);
+        }
+        report.AppendLine("GESAMT | Bestanden=" + passed + " | Fehlgeschlagen=" + failed +
+            " | Seed=" + seed + " | Unity-Würfel unverändert.");
+        if (failed == 0) Debug.Log("CUBE SOLVER BOUNDARY AND RANDOM TESTS BESTANDEN\n" + report);
+        else Debug.LogError("CUBE SOLVER BOUNDARY AND RANDOM TESTS FEHLGESCHLAGEN\n" + report);
+    }
+    finally
+    {
+        solverScrambleTestRunning = false;
+    }
+}
+
+// expectedLength: -1 = no solution, -2 = any verified solution within the bound.
+private bool CheckSolverBoundaryCase(SolverState baseline, string sequence,
+    int maxDepth, int expectedLength, out string result)
+{
+    SolverState state = baseline.Clone();
+    string[] moves = sequence.Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+    foreach (string move in moves)
+    {
+        if (!state.ApplyMove(move) || !state.IsValid())
+        {
+            result = "FAIL | Ungültiger Scramble=" + sequence;
+            Debug.LogError(result);
+            return false;
+        }
+    }
+    string inputKey = state.GetStateKey();
+    string baselineKey = baseline.GetStateKey();
+    List<string> solution = null;
+    string error = null;
+    var timer = System.Diagnostics.Stopwatch.StartNew();
+    try { solution = CubeSolver.Solve(state, maxDepth); }
+    catch (System.Exception exception) { error = exception.GetType().Name + ": " + exception.Message; }
+    finally { timer.Stop(); }
+    bool ok = error == null && state.GetStateKey() == inputKey && baseline.GetStateKey() == baselineKey;
+    if (expectedLength == -1)
+        ok = ok && solution == null;
+    else
+    {
+        ok = ok && solution != null && solution.Count <= maxDepth &&
+            (expectedLength < 0 || solution.Count == expectedLength);
+        if (solution != null)
+        {
+            SolverState verification = state.Clone();
+            foreach (string move in solution)
+            {
+                if (!IsSolverScrambleQuarterTurn(move) || !verification.ApplyMove(move) || !verification.IsValid())
+                {
+                    ok = false;
+                    break;
+                }
+            }
+            ok = ok && CubeSolver.IsSolved(verification);
+        }
+    }
+    result = (ok ? "PASS" : "FAIL") + " | Scramble=" + (sequence.Length == 0 ? "(gelöst)" : sequence) +
+        " | MaxDepth=" + maxDepth + " | Erwartung=" +
+        (expectedLength == -1 ? "keine Lösung" : expectedLength == -2 ? "gültige Lösung" : "Länge " + expectedLength) +
+        " | Lösung=" + (solution == null ? "keine" : solution.Count == 0 ? "(leer)" : string.Join(" ", solution)) +
+        " | Lösungslänge=" + (solution == null ? "–" : solution.Count.ToString()) +
+        " | Suche=" + timer.Elapsed.TotalSeconds.ToString("F3") + " s" +
+        (error == null ? "" : " | Ausnahme=" + error);
+    if (ok) Debug.Log(result); else Debug.LogError(result);
+    return ok;
 }
 
 }

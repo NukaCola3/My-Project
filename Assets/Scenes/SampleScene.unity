@@ -3401,7 +3401,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 349917125}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d440923694544f43cab27320bfe1160f, type: 3}
+  m_Script: {fileID: 11500000, guid: 9b953aa90d2a09ee092d068e86296f79, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CubeStateTester
   rubiksCube: {fileID: 349917130}
@@ -3424,6 +3424,29 @@ MonoBehaviour:
   waitAfterMove: 0.1
   randomTestMoveCount: 1000
   randomTestWaitAfterMove: 0
+  solverScrambleSequences:
+  - R U R'
+  - F R U
+  - L D B'
+  - R U R' U'
+  - F R U B'
+  - L D F' R
+  - R U F L D
+  - F R U R' U'
+  - B' L D F R'
+  solverSixMoveSequences:
+  - R U F L D B
+  - F R U R' U' F'
+  - B' L D F R' U
+  solverSevenMoveSequences:
+  - R U F L D B R'
+  - F R U R' U' F' L
+  - B' L D F R' U B
+  solverEightMoveSequences:
+  - R U F L D B R' U'
+  - F R U R' U' F' L D
+  - B' L D F R' U B L'
+  unitySolverScramble: R U R'
 --- !u!1 &350437676
 GameObject:
   m_ObjectHideFlags: 0
