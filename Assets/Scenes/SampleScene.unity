@@ -3381,6 +3381,7 @@ MonoBehaviour:
   solverTimeLimitSeconds: 5
   solverStoredStateLimit: 500000
   solverMovePause: 0.05
+  solverFrameBudgetMilliseconds: 3
 --- !u!114 &349917131
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3405,63 +3406,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 349917125}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9b953aa90d2a09ee092d068e86296f79, type: 3}
+  m_Script: {fileID: 11500000, guid: 3ed88f26f833d6b9b9eec81aa2441f06, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CubeStateTester
-  rubiksCube: {fileID: 349917130}
-  testSequences:
-  - R R'
-  - L L'
-  - U U'
-  - D D'
-  - F F'
-  - B B'
-  - R U U' R'
-  - F U U' F'
-  - R F F' R'
-  - F R R' F'
-  - R U R' U' U R U' R'
-  - F R U U' R' F'
-  - R U F F' U' R'
-  - R U F L L' F' U' R'
-  - R U F L D B B' D' L' F' U' R'
-  waitAfterMove: 0.1
-  randomTestMoveCount: 1000
-  randomTestWaitAfterMove: 0
-  solverScrambleSequences:
-  - R U R'
-  - F R U
-  - L D B'
-  - R U R' U'
-  - F R U B'
-  - L D F' R
-  - R U F L D
-  - F R U R' U'
-  - B' L D F R'
-  solverSixMoveSequences:
-  - R U F L D B
-  - F R U R' U' F'
-  - B' L D F R' U
-  solverSevenMoveSequences:
-  - R U F L D B R'
-  - F R U R' U' F' L
-  - B' L D F R' U B
-  solverEightMoveSequences:
-  - R U F L D B R' U'
-  - F R U R' U' F' L D
-  - B' L D F R' U B L'
-  solverNineMoveSequences:
-  - R U F L D B R' U' F'
-  - F R U R' U' F' L D B
-  - B' L D F R' U B L' D'
-  solverTenMoveSequences:
-  - R U F L D B R' U' F' L'
-  - F R U R' U' F' L D B R
-  - B' L D F R' U B L' D' F'
-  unitySolverScramble: R U R'
-  solverRandomSeed: 20261007
-  solverRandomCaseCount: 12
-  solverRandomMaxMoves: 8
+  m_EditorClassIdentifier: Assembly-CSharp::RubiksCube
+  cubies: []
+  rotationSpeed: 180
+  scrambleLength: 20
+  solverMaxDepth: 8
+  solverTimeLimitSeconds: 5
+  solverStoredStateLimit: 500000
+  solverMovePause: 0.05
+  solverFrameBudgetMilliseconds: 3
 --- !u!1 &350437676
 GameObject:
   m_ObjectHideFlags: 0
