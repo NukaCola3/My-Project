@@ -80,6 +80,10 @@ public class RubiksCube : MonoBehaviour
     [Min(0.01f)] public float solverTimeLimitSeconds = 5f;
     [Min(2)] public int solverStoredStateLimit = 500000;
     [Min(0f)] public float solverMovePause = 0.05f;
+    [Range(0.5f, 10f)] public float solverFrameBudgetMilliseconds = 3f;
+    private CubeSolver.SearchSession activeSearchSession;
+    private bool cancelSolveRequested;
+    private Coroutine solveCoroutine;
 
     private GameObject rotationPivot;
 
@@ -106,6 +110,11 @@ public class RubiksCube : MonoBehaviour
 
     private void Update()
     {
+        if (isSolving && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            CancelSolve();
+            return;
+        }
         if (IsInputLocked)
         {
             return;
@@ -1196,15 +1205,16 @@ public class RubiksCube : MonoBehaviour
             Debug.LogError("SOLVER: Rotation Speed muss positiv und endlich sein.");
             return;
         }
+        cancelSolveRequested = false;
         isSolving = true;
-        StartCoroutine(SolveCubeCoroutine());
+        solveCoroutine = StartCoroutine(SolveCubeCoroutine());
     }
 
     private IEnumerator SolveCubeCoroutine()
     {
         try
         {
-            // Display the locked state for a frame before synchronous search.
+            // Display the locked state for a frame before creating the search session.
             yield return null;
             SolverState start = new SolverState(cubies);
             if (!start.IsValid())
@@ -1218,21 +1228,37 @@ public class RubiksCube : MonoBehaviour
                 yield break;
             }
             int depth = Mathf.Clamp(solverMaxDepth, 0, 10);
-            List<string> solution = null;
-            string error = null;
-            CubeSolver.SearchStatus searchStatus = CubeSolver.SearchStatus.InvalidInput;
-            try { solution = CubeSolver.Solve(start.Clone(), depth,
-                solverTimeLimitSeconds, solverStoredStateLimit, out searchStatus); }
-            catch (System.Exception exception) { error = exception.GetType().Name + ": " + exception.Message; }
+            if (cancelSolveRequested)
+            {
+                Debug.Log("SOLVER: Suche abgebrochen; Würfel unverändert.");
+                yield break;
+            }
+            activeSearchSession = CubeSolver.CreateSearchSession(start, depth,
+                solverTimeLimitSeconds, solverStoredStateLimit);
+            while (!activeSearchSession.IsComplete)
+            {
+                if (cancelSolveRequested) activeSearchSession.Cancel();
+                else activeSearchSession.Step(Mathf.Clamp(solverFrameBudgetMilliseconds, 0.5f, 10f));
+                if (!activeSearchSession.IsComplete) yield return null;
+            }
+            CubeSolver.SearchStatus searchStatus = activeSearchSession.Status;
+            List<string> solution = activeSearchSession.Solution;
+            Debug.Log("SOLVER SUCHERGEBNIS | Status=" + searchStatus +
+                " | Suchschritte=" + activeSearchSession.StepCount +
+                " | Aktive Suchzeit=" + activeSearchSession.ActiveSearchSeconds.ToString("F3") + " s");
+            activeSearchSession.Dispose();
+            activeSearchSession = null;
             if (solution == null)
             {
-                string reason = searchStatus == CubeSolver.SearchStatus.TimeLimit ? "Zeitlimit erreicht" :
+                string reason = searchStatus == CubeSolver.SearchStatus.Cancelled ? "Suche abgebrochen; Würfel unverändert" :
+                    searchStatus == CubeSolver.SearchStatus.TimeLimit ? "Zeitlimit erreicht" :
                     searchStatus == CubeSolver.SearchStatus.StateLimit ? "Zustandslimit erreicht" :
                     searchStatus == CubeSolver.SearchStatus.DepthLimit ? "Keine Lösung bis Tiefe " + depth :
                     "Suche konnte nicht ausgeführt werden";
-                Debug.LogWarning("SOLVER: " + reason + (error == null ? "." : " | " + error));
+                Debug.LogWarning("SOLVER: " + reason + ".");
                 yield break;
             }
+            if (cancelSolveRequested) yield break;
             // Validate the entire plan before executing any Unity rotation.
             SolverState expected = start.Clone();
             var plan = new List<CubeMove>();
@@ -1255,6 +1281,11 @@ public class RubiksCube : MonoBehaviour
             Debug.Log("SOLVER: Führe Lösung aus: " + string.Join(" ", solution));
             for (int i = 0; i < plan.Count; i++)
             {
+                if (cancelSolveRequested)
+                {
+                    Debug.Log("SOLVER: Ausführung abgebrochen; bisherige Züge bleiben erhalten.");
+                    yield break;
+                }
                 CubeMove move = plan[i];
                 // Internal execution bypasses the manual-input lock.
                 StartLayerRotation(move.axis, move.layer, move.direction);
@@ -1277,7 +1308,13 @@ public class RubiksCube : MonoBehaviour
                     Debug.LogError("SOLVER: Unity/Solver-Abweichung nach Zug " + solution[i] + "; gestoppt.");
                     yield break;
                 }
-                if (solverMovePause > 0f) yield return new WaitForSeconds(solverMovePause);
+                if (cancelSolveRequested)
+                {
+                    Debug.Log("SOLVER: Ausführung nach abgeschlossenem Zug abgebrochen.");
+                    yield break;
+                }
+                float pauseEnd = Time.time + Mathf.Max(0f, solverMovePause);
+                while (!cancelSolveRequested && Time.time < pauseEnd) yield return null;
             }
             cubeState.Build(cubies);
             if (!IsSolved() || !CubeSolver.IsSolved(new SolverState(cubies)))
@@ -1290,6 +1327,34 @@ public class RubiksCube : MonoBehaviour
         }
         finally
         {
+            if (activeSearchSession != null) activeSearchSession.Dispose();
+            activeSearchSession = null;
+            cancelSolveRequested = false;
+            isSolving = false;
+            solveCoroutine = null;
+        }
+    }
+
+    [ContextMenu("Cancel Solve")]
+    public void CancelSolve()
+    {
+        if (!isSolving) return;
+        cancelSolveRequested = true;
+        if (activeSearchSession != null) activeSearchSession.Cancel();
+    }
+
+    private void OnDisable()
+    {
+        // Disabling this component must release search memory and request a stop.
+        // Never stop the rotation coroutine halfway through a quarter turn.
+        CancelSolve();
+        if (!isRotating && solveCoroutine != null)
+        {
+            StopCoroutine(solveCoroutine);
+            if (activeSearchSession != null) activeSearchSession.Dispose();
+            activeSearchSession = null;
+            solveCoroutine = null;
+            cancelSolveRequested = false;
             isSolving = false;
         }
     }

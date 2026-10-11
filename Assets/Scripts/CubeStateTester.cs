@@ -5758,4 +5758,109 @@ public void RunCubeSolverResourceLimitTests()
     else Debug.LogError("CUBE SOLVER RESOURCE LIMIT TESTS FEHLGESCHLAGEN | " + report);
 }
 
+
+[ContextMenu("Run Cube Solver Frame Session Tests")]
+public void RunCubeSolverFrameSessionTests()
+{
+    if (!Application.isPlaying || rubiksCube == null || rubiksCube.cubies == null ||
+        rubiksCube.IsInputLocked || solverScrambleTestRunning)
+    {
+        Debug.LogWarning("FRAME SESSION TEST: Im Play-Modus mit ruhendem Würfel starten.");
+        return;
+    }
+    SolverState baseline = new SolverState(rubiksCube.cubies);
+    if (!baseline.IsValid() || !CubeSolver.IsSolved(baseline))
+    {
+        Debug.LogError("FRAME SESSION TEST: Mit gültigem, gelöstem Würfel starten.");
+        return;
+    }
+    StartCoroutine(RunCubeSolverFrameSessionTestsCoroutine(baseline));
+}
+
+private IEnumerator RunCubeSolverFrameSessionTestsCoroutine(SolverState baseline)
+{
+    solverScrambleTestRunning = true;
+    int passed = 0, failed = 0;
+    try
+    {
+        string[] sequences = { "R U R'", "R U R' U'", "R U F L D B" };
+        foreach (string sequence in sequences)
+        {
+            string[] moves = sequence.Split(' ');
+            SolverState state = baseline.Clone();
+            foreach (string move in moves) state.ApplyMove(move);
+            string inputKey = state.GetStateKey();
+            List<string> reference = CubeSolver.Solve(state, moves.Length);
+            using (CubeSolver.SearchSession session = CubeSolver.CreateSearchSession(state, moves.Length))
+            {
+                int frames = 0;
+                while (!session.IsComplete && frames < 10000)
+                {
+                    // Small work cap forces suspension inside BFS layers.
+                    session.Step(3.0, 64);
+                    frames++;
+                    if (!session.IsComplete) yield return null;
+                }
+                bool ok = session.Status == CubeSolver.SearchStatus.Solved && reference != null &&
+                    session.Solution != null && string.Join(" ", reference) == string.Join(" ", session.Solution) &&
+                    state.GetStateKey() == inputKey && frames > 1;
+                if (session.Solution != null)
+                {
+                    SolverState verification = state.Clone();
+                    foreach (string move in session.Solution)
+                        ok = verification.ApplyMove(move) && verification.IsValid() && ok;
+                    ok = ok && CubeSolver.IsSolved(verification);
+                }
+                string result = (ok ? "PASS" : "FAIL") + " | Scramble=" + sequence +
+                    " | Suchschritte=" + frames + " | Status=" + session.Status +
+                    " | Synchron/Frames identisch=" + ok;
+                if (ok) { passed++; Debug.Log(result); }
+                else { failed++; Debug.LogError(result); }
+            }
+        }
+        SolverState cancelledInput = baseline.Clone();
+        cancelledInput.ApplyMove("R");
+        cancelledInput.ApplyMove("U");
+        string cancelledKey = cancelledInput.GetStateKey();
+        bool cancelBefore, cancelDuring;
+        using (CubeSolver.SearchSession session = CubeSolver.CreateSearchSession(cancelledInput, 2))
+        {
+            session.Cancel();
+            session.Step();
+            cancelBefore = session.IsComplete && session.Status == CubeSolver.SearchStatus.Cancelled &&
+                session.Solution == null && cancelledInput.GetStateKey() == cancelledKey;
+        }
+        using (CubeSolver.SearchSession session = CubeSolver.CreateSearchSession(cancelledInput, 2))
+        {
+            session.Step(3.0, 1);
+            yield return null;
+            bool runningBefore = !session.IsComplete;
+            session.Cancel();
+            session.Step();
+            cancelDuring = runningBefore && session.IsComplete && session.Status == CubeSolver.SearchStatus.Cancelled &&
+                session.Solution == null && cancelledInput.GetStateKey() == cancelledKey;
+        }
+        if (cancelBefore) passed++; else failed++;
+        if (cancelDuring) passed++; else failed++;
+        List<string> retry = CubeSolver.Solve(cancelledInput, 2);
+        bool retryOk = retry != null && cancelledInput.GetStateKey() == cancelledKey;
+        if (retry != null)
+        {
+            SolverState verification = cancelledInput.Clone();
+            foreach (string move in retry) retryOk = verification.ApplyMove(move) && retryOk;
+            retryOk = retryOk && CubeSolver.IsSolved(verification);
+        }
+        if (retryOk) passed++; else failed++;
+        Debug.Log("FRAME SESSION ABBRUCHTEST | Vor Start=" + cancelBefore +
+            " | Zwischen Frames=" + cancelDuring + " | Neue Suche=" + retryOk);
+        string report = " | Bestanden=" + passed + " | Fehlgeschlagen=" + failed;
+        if (failed == 0) Debug.Log("CUBE SOLVER FRAME SESSION TESTS BESTANDEN" + report);
+        else Debug.LogError("CUBE SOLVER FRAME SESSION TESTS FEHLGESCHLAGEN" + report);
+    }
+    finally
+    {
+        solverScrambleTestRunning = false;
+    }
+}
+
 }
